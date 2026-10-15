@@ -33,6 +33,27 @@ class Harness
         $this->db = $this->om->get(ResourceConnection::class)->getConnection();
     }
 
+    /** Route the module and core classes to the harness test doubles (before they are first instantiated). */
+    public function useDoubles(): void
+    {
+        require_once __DIR__ . '/Doubles.php';
+        $this->om->configure(['preferences' => [
+            \Magento\OfflinePayments\Model\Checkmo::class => CaptureThenFailPayment::class,
+            \Magento\Sales\Model\ResourceModel\Order\Relation::class => FailingOrderRelation::class,
+            \Magento\Sales\Api\OrderRepositoryInterface::class => ThrowAfterCommitOrderRepository::class,
+            \Company\SupplierSync\Observer\PrePaymentFence::class => SkippablePrePaymentFence::class,
+            \Company\SupplierSync\Model\Config::class => AdjustableConfig::class,
+        ]]);
+    }
+
+    /** Rebuild the indexes a new product needs before it can be added to a cart. */
+    public function reindex(): void
+    {
+        foreach (['cataloginventory_stock', 'inventory', 'catalog_product_price'] as $id) {
+            $this->om->create(\Magento\Indexer\Model\Indexer::class)->load($id)->reindexAll();
+        }
+    }
+
     /** Create (or reuse) a simple product enabled on website 1. */
     public function product(string $sku, bool $decimal = false): void
     {
@@ -47,6 +68,7 @@ class Harness
             ->setWebsiteIds([1])->setStatus(1)->setVisibility(4)
             ->setStockData(['use_config_manage_stock' => 0, 'manage_stock' => 0, 'is_qty_decimal' => (int)$decimal, 'is_in_stock' => 1]);
         $repo->save($p);
+        $this->reindex();
     }
 
     /** Create the harness supplier (enabled on base) and assign the given SKUs to it. */
@@ -67,6 +89,169 @@ class Harness
             $this->om->get(\Company\SupplierSync\Api\AssignmentManagementInterface::class)->assign($sku, 'base', $this->supplierCode);
         }
         return $this->supplierId = (int)$s->getSupplierId();
+    }
+
+    /** Create (or reuse) a configurable product with simple children, one per option label. Returns option ids. */
+    public function configurable(string $sku, array $labels): array
+    {
+        $eavSetup = $this->om->get(\Magento\Eav\Setup\EavSetupFactory::class)->create();
+        $code = 'supplier_sync_size';
+        if (!$eavSetup->getAttributeId('catalog_product', $code)) {
+            $eavSetup->addAttribute('catalog_product', $code, [
+                'type' => 'int', 'label' => 'Size', 'input' => 'select', 'global' => 1, 'user_defined' => true,
+                'required' => false, 'visible' => true, 'option' => ['values' => $labels],
+                'apply_to' => 'simple,configurable',
+            ]);
+            $eavSetup->addAttributeToGroup('catalog_product', 4, 'General', $code);
+        }
+        $attr = $this->om->create(\Magento\Eav\Model\Config::class)->getAttribute('catalog_product', $code);
+        $options = [];
+        foreach ($attr->getSource()->getAllOptions(false) as $o) {
+            $options[$o['label']] = (int)$o['value'];
+        }
+        $repo = $this->om->get(\Magento\Catalog\Api\ProductRepositoryInterface::class);
+        $children = [];
+        foreach ($labels as $label) {
+            $childSku = "$sku-$label";
+            try {
+                $children[] = (int)$repo->get($childSku)->getId();
+            } catch (\Magento\Framework\Exception\NoSuchEntityException) {
+                $p = $this->om->create(\Magento\Catalog\Model\Product::class);
+                $p->setSku($childSku)->setName($childSku)->setTypeId('simple')->setAttributeSetId(4)->setPrice(10)
+                    ->setWebsiteIds([1])->setStatus(1)->setVisibility(1)->setData($code, $options[$label])
+                    ->setStockData(['use_config_manage_stock' => 0, 'manage_stock' => 0, 'is_in_stock' => 1]);
+                $children[] = (int)$repo->save($p)->getId();
+            }
+        }
+        try {
+            $repo->get($sku);
+        } catch (\Magento\Framework\Exception\NoSuchEntityException) {
+            $created = true;
+            $conf = $this->om->create(\Magento\Catalog\Model\Product::class);
+            $conf->setSku($sku)->setName($sku)->setTypeId('configurable')->setAttributeSetId(4)->setWebsiteIds([1])
+                ->setStatus(1)->setVisibility(4)->setStockData(['use_config_manage_stock' => 0, 'manage_stock' => 0, 'is_in_stock' => 1]);
+            $factory = $this->om->get(\Magento\ConfigurableProduct\Helper\Product\Options\Factory::class);
+            $ext = $conf->getExtensionAttributes();
+            $ext->setConfigurableProductOptions($factory->create([[
+                'attribute_id' => $attr->getId(), 'code' => $code, 'label' => 'Size', 'position' => 0,
+                'values' => array_map(fn ($v) => ['label' => 'x', 'attribute_id' => $attr->getId(), 'value_index' => $v], array_values($options)),
+            ]]));
+            $ext->setConfigurableProductLinks($children);
+            $conf->setExtensionAttributes($ext);
+            $repo->save($conf);
+        }
+        if (!empty($created)) {
+            $this->reindex();
+        }
+        return ['attribute_id' => (int)$attr->getId(), 'options' => $options];
+    }
+
+    /**
+     * Build and save a guest quote. Lines: ['sku' => .., 'qty' => ..] or ['sku' => configurable, 'qty' => ..,
+     * 'super' => [attribute_id => option_id]]. Returns the quote id.
+     */
+    public function quote(array $lines): int
+    {
+        $store = $this->om->get(\Magento\Store\Model\StoreManagerInterface::class);
+        $store->setCurrentStore(1);
+        $repo = $this->om->get(\Magento\Catalog\Api\ProductRepositoryInterface::class);
+        $quotes = $this->om->get(\Magento\Quote\Api\CartRepositoryInterface::class);
+        $quote = $this->om->create(\Magento\Quote\Model\Quote::class);
+        $quote->setStore($store->getStore(1))->setCurrency()->setCustomerIsGuest(true)
+            ->setCustomerEmail('scenario@example.com')->setCheckoutMethod('guest');
+        foreach ($lines as $line) {
+            $request = ['qty' => $line['qty']] + (isset($line['super']) ? ['super_attribute' => $line['super']] : []);
+            $result = $quote->addProduct($repo->get($line['sku'], false, 1, true), new \Magento\Framework\DataObject($request));
+            if (is_string($result)) {
+                throw new \RuntimeException($result);
+            }
+        }
+        $address = ['firstname' => 'Sam', 'lastname' => 'Scenario', 'street' => 'Main 1', 'city' => 'Austin',
+            'country_id' => 'US', 'region_id' => 57, 'postcode' => '78701', 'telephone' => '5555555',
+            'email' => 'scenario@example.com'];
+        $quote->getBillingAddress()->addData($address);
+        $quote->getShippingAddress()->addData($address)->setCollectShippingRates(true)->collectShippingRates()
+            ->setShippingMethod('flatrate_flatrate');
+        $quote->collectTotals();
+        $quotes->save($quote);
+        $quote->getPayment()->setQuote($quote)->importData(['method' => 'checkmo']);
+        $quotes->save($quote);
+        return (int)$quote->getId();
+    }
+
+    /** Place a saved quote the way admin order create does (QuoteManagement::submit). Returns the order id. */
+    public function submitQuote(int $quoteId): int
+    {
+        $quote = $this->om->get(\Magento\Quote\Api\CartRepositoryInterface::class)->get($quoteId);
+        return (int)$this->om->get(\Magento\Quote\Model\QuoteManagement::class)->submit($quote)->getEntityId();
+    }
+
+    /** Place a saved quote the way checkout and REST do (CartManagementInterface::placeOrder). */
+    public function placeQuote(int $quoteId): int
+    {
+        return (int)$this->om->get(\Magento\Quote\Api\CartManagementInterface::class)->placeOrder($quoteId);
+    }
+
+    /** Quote item id of the simple product line (the child for configurables) for a SKU. */
+    public function quoteItemId(int $quoteId, string $sku): int
+    {
+        return (int)$this->db->fetchOne(
+            "SELECT item_id FROM quote_item WHERE quote_id = ? AND sku = ? AND product_type = 'simple'",
+            [$quoteId, $sku]
+        );
+    }
+
+    public function reservations(array $where): array
+    {
+        $select = $this->db->select()->from('company_supplier_reservation');
+        foreach ($where as $cond => $value) {
+            $select->where($cond, $value);
+        }
+        return $this->db->fetchAll($select->order('reservation_id'));
+    }
+
+    public function attempt(int $attemptId): array
+    {
+        return $this->db->fetchRow('SELECT * FROM company_supplier_placement_attempt WHERE attempt_id = ?', [$attemptId]);
+    }
+
+    /** Latest attempt for a quote. */
+    public function attemptForQuote(int $quoteId): ?array
+    {
+        return $this->db->fetchRow(
+            'SELECT * FROM company_supplier_placement_attempt WHERE quote_id = ? ORDER BY attempt_id DESC LIMIT 1',
+            [$quoteId]
+        ) ?: null;
+    }
+
+    public function orderCountForQuote(int $quoteId): int
+    {
+        return (int)$this->db->fetchOne('SELECT COUNT(*) FROM sales_order WHERE quote_id = ?', [$quoteId]);
+    }
+
+    /** Order item id by SKU and product type. */
+    public function orderItemId(int $orderId, string $sku, string $type = 'simple'): int
+    {
+        return (int)$this->db->fetchOne(
+            'SELECT item_id FROM sales_order_item WHERE order_id = ? AND sku = ? AND product_type = ?',
+            [$orderId, $sku, $type]
+        );
+    }
+
+    public function events(int $inventoryId, string $type): array
+    {
+        return $this->db->fetchAll(
+            'SELECT * FROM company_supplier_reservation_event WHERE inventory_id = ? AND type = ? ORDER BY event_id',
+            [$inventoryId, $type]
+        );
+    }
+
+    /** Snapshot through the real path: accept, then consume. */
+    public function snapshot(string $sku, string $qty): int
+    {
+        $id = $this->accept($sku, $qty);
+        $this->om->get(\Company\SupplierSync\Model\Queue\UpdateConsumer::class)->process($id);
+        return $id;
     }
 
     /** Insert an accepted update directly (no publish), like intake's transaction does. */
@@ -136,6 +321,8 @@ class Harness
     /** Delete every module row that belongs to the harness supplier. */
     public function cleanup(): void
     {
+        $this->supplierId = $this->supplierId
+            ?: (int)$this->db->fetchOne('SELECT supplier_id FROM company_supplier WHERE code = ?', [$this->supplierCode]);
         if (!$this->supplierId) {
             return;
         }
@@ -149,6 +336,15 @@ class Harness
                 $db->delete('company_supplier_placement_attempt', ['attempt_id IN (?)' => $attempts]);
             }
             $db->delete('company_supplier_inventory', ['inventory_id IN (?)' => $inv]);
+        }
+        $attempts = $db->fetchCol(
+            'SELECT a.attempt_id FROM company_supplier_placement_attempt a'
+            . ' LEFT JOIN company_supplier_reservation r ON r.attempt_id = a.attempt_id'
+            . ' WHERE r.reservation_id IS NULL AND a.quote_id IN (SELECT entity_id FROM quote WHERE customer_email = ?)',
+            ['scenario@example.com']
+        );
+        if ($attempts) {
+            $db->delete('company_supplier_placement_attempt', ['attempt_id IN (?)' => $attempts]);
         }
         $db->delete('company_supplier_update', ['supplier_id = ?' => $this->supplierId]);
         $db->delete('company_supplier_assignment', ['supplier_id = ?' => $this->supplierId]);
