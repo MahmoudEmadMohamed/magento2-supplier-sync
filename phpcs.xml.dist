@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<ruleset name="Company_SupplierSync">
+    <description>Magento 2 coding standard for Company_SupplierSync.</description>
+    <arg name="extensions" value="php,phtml"/>
+    <arg value="sp"/>
+    <file>.</file>
+    <exclude-pattern>/vendor/*</exclude-pattern>
+    <exclude-pattern>/docs/*</exclude-pattern>
+    <rule ref="Magento2"/>
+    <!-- Declarative schema and DI XML lines are long by nature. -->
+    <rule ref="Generic.Files.LineLength">
+        <exclude-pattern>*.xml</exclude-pattern>
+    </rule>
+    <!-- Decimal is a stateless bcmath helper; static calls are intentional. -->
+    <rule ref="Magento2.Functions.StaticFunction">
+        <exclude-pattern>*/Model/Decimal.php</exclude-pattern>
+    </rule>
+</ruleset>

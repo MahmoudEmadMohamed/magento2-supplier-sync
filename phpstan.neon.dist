@@ -1,0 +1,12 @@
+parameters:
+    level: 6
+    paths:
+        - .
+    excludePaths:
+        - vendor/*
+        - Test/Integration/*
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        # Magento factories and interceptors are generated at runtime.
+        - '#(unknown class|invalid type|non-existent class) .+Factory#'
