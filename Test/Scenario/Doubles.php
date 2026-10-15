@@ -77,6 +77,15 @@ class SkippablePrePaymentFence extends \Company\SupplierSync\Observer\PrePayment
     }
 }
 
+/** Integration tokens accepted as bearer tokens without changing the store's configuration. */
+class BearerEnabledAuthorizationConfig extends \Magento\Integration\Model\Config\AuthorizationConfig
+{
+    public function isIntegrationAsBearerEnabled(): bool
+    {
+        return true;
+    }
+}
+
 /** Module config with an adjustable snapshot lag window. */
 class AdjustableConfig extends \Company\SupplierSync\Model\Config
 {

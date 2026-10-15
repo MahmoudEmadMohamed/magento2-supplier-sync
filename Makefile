@@ -4,7 +4,7 @@ PHP ?= php
 MAGENTO = $(PHP) $(MAGENTO_ROOT)/bin/magento
 BIN = $(MAGENTO_ROOT)/vendor/bin
 
-.PHONY: install phpcs phpstan unit integration test consumer dispatch burst
+.PHONY: install phpcs phpstan unit integration test consumer dispatch burst scenarios
 
 install: ## Enable the module, apply the schema, regenerate interceptors (do not use --keep-generated)
 	$(MAGENTO) module:enable Company_SupplierSync
@@ -30,6 +30,12 @@ consumer: ## Start the stock update consumer
 
 dispatch: ## Publish due outbox rows and run the sweep once
 	$(MAGENTO) supplier-sync:outbox:dispatch
+
+scenarios: ## All scenario harnesses against the configured database (developer mode; uses fixture data)
+	$(PHP) Test/Scenario/queue-scenarios.php $(MAGENTO_ROOT)
+	$(PHP) Test/Scenario/placement-scenarios.php $(MAGENTO_ROOT)
+	$(PHP) Test/Scenario/rest-scenarios.php $(MAGENTO_ROOT)
+	./scripts/reserve-burst.sh $(MAGENTO_ROOT)
 
 burst: ## 20 concurrent one-unit reservations (developer mode only)
 	./scripts/reserve-burst.sh $(MAGENTO_ROOT)
