@@ -6,6 +6,7 @@ parameters:
         - vendor/*
         - Test/Integration/*
         - Test/Concurrency/*
+        - Test/Scenario/*
     treatPhpDocTypesAsCertain: false
     reportUnmatchedIgnoredErrors: false
     ignoreErrors:
