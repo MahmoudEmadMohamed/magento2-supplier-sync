@@ -32,4 +32,4 @@ dispatch: ## Publish due outbox rows and run the sweep once
 	$(MAGENTO) supplier-sync:outbox:dispatch
 
 burst: ## 20 concurrent one-unit reservations (developer mode only)
-	./scripts/reserve-burst.sh
+	./scripts/reserve-burst.sh $(MAGENTO_ROOT)
