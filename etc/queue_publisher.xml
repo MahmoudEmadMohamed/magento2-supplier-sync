@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/publisher.xsd">
+    <!-- No connection element: Magento's default connection is used (AMQP when configured, db otherwise). -->
+    <publisher topic="supplier_sync.update.apply"/>
+</config>

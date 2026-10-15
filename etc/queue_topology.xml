@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/topology.xsd">
+    <exchange name="magento" type="topic">
+        <binding id="supplierSyncUpdateApply" topic="supplier_sync.update.apply" destinationType="queue" destination="supplier_sync.update.apply"/>
+    </exchange>
+</config>

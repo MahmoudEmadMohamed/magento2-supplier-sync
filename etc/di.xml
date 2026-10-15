@@ -11,6 +11,9 @@
     <preference for="Company\SupplierSync\Api\SupplierRepositoryInterface" type="Company\SupplierSync\Model\SupplierRepository"/>
     <preference for="Company\SupplierSync\Api\SupplierWebsiteManagementInterface" type="Company\SupplierSync\Model\SupplierWebsiteManagement"/>
     <preference for="Company\SupplierSync\Api\AssignmentManagementInterface" type="Company\SupplierSync\Model\AssignmentManagement"/>
+    <preference for="Company\SupplierSync\Api\StockUpdateManagementInterface" type="Company\SupplierSync\Model\Update\StockUpdateManagement"/>
+    <preference for="Company\SupplierSync\Api\StockUpdateStatusRepositoryInterface" type="Company\SupplierSync\Model\Update\StockUpdateStatusRepository"/>
+    <preference for="Company\SupplierSync\Api\InventoryQueryInterface" type="Company\SupplierSync\Model\Inventory\InventoryQuery"/>
 
     <!-- Dedicated logger: var/log/supplier_sync.log -->
     <virtualType name="Company\SupplierSync\Logger\Logger" type="Magento\Framework\Logger\Monolog">
@@ -28,6 +31,32 @@
         </arguments>
     </type>
 
+    <type name="Company\SupplierSync\Model\Update\StockUpdateManagement">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Company\SupplierSync\Model\Update\SnapshotApplier">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Company\SupplierSync\Model\Queue\UpdatePublisher">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Company\SupplierSync\Model\Queue\UpdateConsumer">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Company\SupplierSync\Model\Queue\UpdateSweeper">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+
     <!-- CLI -->
     <type name="Magento\Framework\Console\CommandList">
         <arguments>
@@ -38,6 +67,11 @@
                 <item name="supplier_sync_assignment_set" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentSetCommand</item>
                 <item name="supplier_sync_assignment_remove" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentRemoveCommand</item>
                 <item name="supplier_sync_assignment_list" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentListCommand</item>
+                <item name="supplier_sync_update_list" xsi:type="object">Company\SupplierSync\Console\Command\UpdateListCommand</item>
+                <item name="supplier_sync_update_inspect" xsi:type="object">Company\SupplierSync\Console\Command\UpdateInspectCommand</item>
+                <item name="supplier_sync_update_retry" xsi:type="object">Company\SupplierSync\Console\Command\UpdateRetryCommand</item>
+                <item name="supplier_sync_outbox_dispatch" xsi:type="object">Company\SupplierSync\Console\Command\OutboxDispatchCommand</item>
+                <item name="supplier_sync_inventory_show" xsi:type="object">Company\SupplierSync\Console\Command\InventoryShowCommand</item>
                 <item name="supplier_sync_dev_reserve_burst" xsi:type="object">Company\SupplierSync\Console\Command\DevReserveBurstCommand</item>
             </argument>
         </arguments>

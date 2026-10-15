@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Communication/etc/communication.xsd">
+    <!-- The body is only the update id: the database row is the source of truth, so messages are replay-safe. -->
+    <topic name="supplier_sync.update.apply" request="int"/>
+</config>
