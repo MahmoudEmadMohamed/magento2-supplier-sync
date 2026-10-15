@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Acl/etc/acl.xsd">
+    <acl>
+        <resources>
+            <resource id="Magento_Backend::admin">
+                <resource id="Company_SupplierSync::supplier_sync" title="Supplier Sync" sortOrder="100">
+                    <resource id="Company_SupplierSync::updates_write" title="Submit stock updates" sortOrder="10"/>
+                    <resource id="Company_SupplierSync::updates_read" title="Read stock update status" sortOrder="20"/>
+                    <resource id="Company_SupplierSync::inventory_read" title="Read supplier inventory" sortOrder="30"/>
+                </resource>
+            </resource>
+        </resources>
+    </acl>
+</config>

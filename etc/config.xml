@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <supplier_sync>
+            <snapshot>
+                <max_lag_seconds>300</max_lag_seconds>
+            </snapshot>
+            <queue>
+                <lease_seconds>120</lease_seconds>
+                <max_attempts>5</max_attempts>
+            </queue>
+            <placement>
+                <lease_seconds>900</lease_seconds>
+            </placement>
+        </supplier_sync>
+    </default>
+</config>

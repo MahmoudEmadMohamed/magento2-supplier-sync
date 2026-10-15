@@ -1,0 +1,270 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="company_supplier" resource="default" engine="innodb" comment="Supplier">
+        <column xsi:type="int" name="supplier_id" unsigned="true" nullable="false" identity="true" comment="Supplier ID"/>
+        <column xsi:type="varchar" name="code" length="64" nullable="false" comment="Supplier code"/>
+        <column xsi:type="varchar" name="name" length="255" nullable="false" comment="Supplier name"/>
+        <column xsi:type="smallint" name="is_active" unsigned="true" nullable="false" default="1" comment="Is active"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at"/>
+        <column xsi:type="datetime" name="updated_at" nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Updated at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="supplier_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_CODE">
+            <column name="code"/>
+        </constraint>
+    </table>
+
+    <table name="company_supplier_website" resource="default" engine="innodb" comment="Supplier website enablement">
+        <column xsi:type="int" name="supplier_id" unsigned="true" nullable="false" comment="Supplier ID"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website ID"/>
+        <column xsi:type="smallint" name="is_active" unsigned="true" nullable="false" default="1" comment="Is active"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="supplier_id"/>
+            <column name="website_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_WEBSITE_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID"
+                    table="company_supplier_website" column="supplier_id"
+                    referenceTable="company_supplier" referenceColumn="supplier_id" onDelete="CASCADE"/>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_WEBSITE_WEBSITE_ID_STORE_WEBSITE_WEBSITE_ID"
+                    table="company_supplier_website" column="website_id"
+                    referenceTable="store_website" referenceColumn="website_id" onDelete="CASCADE"/>
+    </table>
+
+    <table name="company_supplier_assignment" resource="default" engine="innodb" comment="Supplier assignment per SKU and website">
+        <column xsi:type="int" name="assignment_id" unsigned="true" nullable="false" identity="true" comment="Assignment ID"/>
+        <column xsi:type="varchar" name="sku" length="64" nullable="false" comment="SKU"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website ID"/>
+        <column xsi:type="int" name="supplier_id" unsigned="true" nullable="false" comment="Supplier ID"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at"/>
+        <column xsi:type="datetime" name="updated_at" nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Updated at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="assignment_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_ASSIGNMENT_SKU_WEBSITE_ID">
+            <column name="sku"/>
+            <column name="website_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_ASSIGNMENT_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID"
+                    table="company_supplier_assignment" column="supplier_id"
+                    referenceTable="company_supplier" referenceColumn="supplier_id" onDelete="CASCADE"/>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_ASSIGNMENT_WEBSITE_ID_STORE_WEBSITE_WEBSITE_ID"
+                    table="company_supplier_assignment" column="website_id"
+                    referenceTable="store_website" referenceColumn="website_id" onDelete="CASCADE"/>
+    </table>
+
+    <table name="company_supplier_inventory" resource="default" engine="innodb" comment="Supplier inventory ledger">
+        <column xsi:type="int" name="inventory_id" unsigned="true" nullable="false" identity="true" comment="Inventory ID"/>
+        <column xsi:type="int" name="supplier_id" unsigned="true" nullable="false" comment="Supplier ID"/>
+        <column xsi:type="varchar" name="sku" length="64" nullable="false" comment="SKU"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website ID"/>
+        <column xsi:type="decimal" name="quantity" scale="4" precision="12" nullable="false" default="0" comment="Last applied snapshot qty"/>
+        <column xsi:type="decimal" name="reserved_qty" scale="4" precision="12" nullable="false" default="0" comment="Open unshipped reservations"/>
+        <column xsi:type="decimal" name="fulfilled_pending_qty" scale="4" precision="12" nullable="false" default="0" comment="Shipped, not yet reflected in a snapshot"/>
+        <column xsi:type="decimal" name="unit_cost" scale="6" precision="20" nullable="true" comment="Supplier purchase cost"/>
+        <column xsi:type="varchar" name="currency" length="3" nullable="true" comment="Cost currency (website base currency)"/>
+        <column xsi:type="int" name="last_update_id" unsigned="true" nullable="false" default="0" comment="Last applied update ID"/>
+        <column xsi:type="datetime" name="last_applied_at" nullable="true" comment="Last applied at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="inventory_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_INVENTORY_SUPPLIER_ID_SKU_WEBSITE_ID">
+            <column name="supplier_id"/>
+            <column name="sku"/>
+            <column name="website_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_INVENTORY_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID"
+                    table="company_supplier_inventory" column="supplier_id"
+                    referenceTable="company_supplier" referenceColumn="supplier_id" onDelete="NO ACTION"/>
+    </table>
+
+    <table name="company_supplier_update" resource="default" engine="innodb" comment="Accepted supplier stock updates">
+        <column xsi:type="int" name="update_id" unsigned="true" nullable="false" identity="true" comment="Update ID (server acceptance order)"/>
+        <column xsi:type="int" name="supplier_id" unsigned="true" nullable="false" comment="Supplier ID"/>
+        <column xsi:type="varchar" name="idempotency_key" length="128" nullable="false" comment="Supplier idempotency key"/>
+        <column xsi:type="varchar" name="payload_hash" length="64" nullable="false" comment="SHA-256 of the normalized payload"/>
+        <column xsi:type="varchar" name="sku" length="64" nullable="false" comment="SKU"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website ID"/>
+        <column xsi:type="decimal" name="quantity" scale="4" precision="12" nullable="false" comment="Snapshot qty"/>
+        <column xsi:type="decimal" name="unit_cost" scale="6" precision="20" nullable="false" comment="Supplier purchase cost"/>
+        <column xsi:type="varchar" name="currency" length="3" nullable="false" comment="Currency"/>
+        <column xsi:type="bigint" name="fulfil_watermark" unsigned="true" nullable="false" default="0" comment="Highest fulfil event ID at acceptance"/>
+        <column xsi:type="datetime" name="accepted_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Accepted at (DB time)"/>
+        <column xsi:type="varchar" name="status" length="32" nullable="false" comment="Status"/>
+        <column xsi:type="smallint" name="attempts" unsigned="true" nullable="false" default="0" comment="Processing claims so far"/>
+        <column xsi:type="varchar" name="claim_token" length="64" nullable="true" comment="Current processing claim"/>
+        <column xsi:type="datetime" name="lease_until" nullable="true" comment="Processing lease expiry"/>
+        <column xsi:type="datetime" name="last_attempt_at" nullable="true" comment="Last claim at"/>
+        <column xsi:type="datetime" name="next_attempt_at" nullable="true" comment="Retry due at"/>
+        <column xsi:type="datetime" name="processed_at" nullable="true" comment="Terminal status at"/>
+        <column xsi:type="varchar" name="error_code" length="64" nullable="true" comment="Error code"/>
+        <column xsi:type="varchar" name="safe_error" length="255" nullable="true" comment="Safe error message"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="update_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_UPDATE_SUPPLIER_ID_IDEMPOTENCY_KEY">
+            <column name="supplier_id"/>
+            <column name="idempotency_key"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_UPDATE_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID"
+                    table="company_supplier_update" column="supplier_id"
+                    referenceTable="company_supplier" referenceColumn="supplier_id" onDelete="NO ACTION"/>
+        <index referenceId="COMPANY_SUPPLIER_UPDATE_STATUS_NEXT_ATTEMPT_AT" indexType="btree">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </index>
+        <index referenceId="COMPANY_SUPPLIER_UPDATE_STATUS_LEASE_UNTIL" indexType="btree">
+            <column name="status"/>
+            <column name="lease_until"/>
+        </index>
+    </table>
+
+    <table name="company_supplier_outbox" resource="default" engine="innodb" comment="Transactional outbox for stock updates">
+        <column xsi:type="int" name="outbox_id" unsigned="true" nullable="false" identity="true" comment="Outbox ID"/>
+        <column xsi:type="int" name="update_id" unsigned="true" nullable="false" comment="Update ID"/>
+        <column xsi:type="varchar" name="claim_token" length="64" nullable="true" comment="Dispatcher claim"/>
+        <column xsi:type="datetime" name="claimed_until" nullable="true" comment="Dispatcher claim expiry"/>
+        <column xsi:type="datetime" name="published_at" nullable="true" comment="Last published at"/>
+        <column xsi:type="datetime" name="next_publish_at" nullable="true" comment="Not published before"/>
+        <column xsi:type="int" name="attempts" unsigned="true" nullable="false" default="0" comment="Publications so far"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="outbox_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_OUTBOX_UPDATE_ID">
+            <column name="update_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_OUTBOX_UPDATE_ID_COMPANY_SUPPLIER_UPDATE_UPDATE_ID"
+                    table="company_supplier_outbox" column="update_id"
+                    referenceTable="company_supplier_update" referenceColumn="update_id" onDelete="CASCADE"/>
+        <index referenceId="COMPANY_SUPPLIER_OUTBOX_PUBLISHED_AT_NEXT_PUBLISH_AT" indexType="btree">
+            <column name="published_at"/>
+            <column name="next_publish_at"/>
+        </index>
+        <index referenceId="COMPANY_SUPPLIER_OUTBOX_PUBLISHED_AT_CLAIMED_UNTIL" indexType="btree">
+            <column name="published_at"/>
+            <column name="claimed_until"/>
+        </index>
+    </table>
+
+    <table name="company_supplier_update_event" resource="default" engine="innodb" comment="Stock update audit trail (append-only)">
+        <column xsi:type="bigint" name="event_id" unsigned="true" nullable="false" identity="true" comment="Event ID"/>
+        <column xsi:type="int" name="update_id" unsigned="true" nullable="false" comment="Update ID"/>
+        <column xsi:type="varchar" name="from_status" length="32" nullable="true" comment="From status"/>
+        <column xsi:type="varchar" name="to_status" length="32" nullable="false" comment="To status"/>
+        <column xsi:type="smallint" name="attempt" unsigned="true" nullable="false" default="0" comment="Attempt number"/>
+        <column xsi:type="varchar" name="safe_message" length="255" nullable="true" comment="Safe message"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="event_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_UPDATE_EVENT_UPDATE_ID_COMPANY_SUPPLIER_UPDATE_UPDATE_ID"
+                    table="company_supplier_update_event" column="update_id"
+                    referenceTable="company_supplier_update" referenceColumn="update_id" onDelete="CASCADE"/>
+    </table>
+
+    <table name="company_supplier_placement_attempt" resource="default" engine="innodb" comment="Order placement attempts holding supplier stock">
+        <column xsi:type="int" name="attempt_id" unsigned="true" nullable="false" identity="true" comment="Attempt ID"/>
+        <column xsi:type="int" name="quote_id" unsigned="true" nullable="false" comment="Quote ID"/>
+        <column xsi:type="varchar" name="reserved_order_id" length="64" nullable="true" comment="Reserved order increment ID"/>
+        <column xsi:type="int" name="order_id" unsigned="true" nullable="true" comment="Order ID once saved"/>
+        <column xsi:type="varchar" name="status" length="32" nullable="false" comment="Status"/>
+        <column xsi:type="datetime" name="lease_until" nullable="false" comment="Lease expiry"/>
+        <column xsi:type="datetime" name="detached_at" nullable="true" comment="Detached from the quote at"/>
+        <column xsi:type="datetime" name="started_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Started at"/>
+        <column xsi:type="datetime" name="updated_at" nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Updated at"/>
+        <column xsi:type="datetime" name="completed_at" nullable="true" comment="Completed or failed at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="attempt_id"/>
+        </constraint>
+        <index referenceId="COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_QUOTE_ID_STATUS" indexType="btree">
+            <column name="quote_id"/>
+            <column name="status"/>
+        </index>
+        <index referenceId="COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_STATUS_LEASE_UNTIL" indexType="btree">
+            <column name="status"/>
+            <column name="lease_until"/>
+        </index>
+        <index referenceId="COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_ORDER_ID" indexType="btree">
+            <column name="order_id"/>
+        </index>
+    </table>
+
+    <table name="company_supplier_reservation" resource="default" engine="innodb" comment="Supplier stock reservation per order item">
+        <column xsi:type="int" name="reservation_id" unsigned="true" nullable="false" identity="true" comment="Reservation ID"/>
+        <column xsi:type="int" name="attempt_id" unsigned="true" nullable="false" comment="Placement attempt ID"/>
+        <column xsi:type="int" name="inventory_id" unsigned="true" nullable="false" comment="Inventory ID"/>
+        <column xsi:type="int" name="quote_item_id" unsigned="true" nullable="false" comment="Quote item ID (simple product line)"/>
+        <column xsi:type="int" name="active_quote_item_id" unsigned="true" nullable="true" comment="Set while the hold blocks a new hold for this quote item"/>
+        <column xsi:type="int" name="order_id" unsigned="true" nullable="true" comment="Order ID"/>
+        <column xsi:type="int" name="order_item_id" unsigned="true" nullable="true" comment="Order item ID (simple product line)"/>
+        <column xsi:type="int" name="qty_source_item_id" unsigned="true" nullable="true" comment="Order item whose quantities apply (parent for configurables)"/>
+        <column xsi:type="varchar" name="sku" length="64" nullable="false" comment="SKU"/>
+        <column xsi:type="smallint" name="website_id" unsigned="true" nullable="false" comment="Website ID"/>
+        <column xsi:type="decimal" name="qty_reserved" scale="4" precision="12" nullable="false" comment="Qty reserved"/>
+        <column xsi:type="decimal" name="qty_fulfilled" scale="4" precision="12" nullable="false" default="0" comment="Qty fulfilled"/>
+        <column xsi:type="decimal" name="qty_released" scale="4" precision="12" nullable="false" default="0" comment="Qty released"/>
+        <column xsi:type="varchar" name="status" length="32" nullable="false" comment="Derived status"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at"/>
+        <column xsi:type="datetime" name="updated_at" nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Updated at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="reservation_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_RESERVATION_ATTEMPT_ID_QUOTE_ITEM_ID">
+            <column name="attempt_id"/>
+            <column name="quote_item_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_RESERVATION_ACTIVE_QUOTE_ITEM_ID">
+            <column name="active_quote_item_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="COMPANY_SUPPLIER_RESERVATION_ORDER_ITEM_ID">
+            <column name="order_item_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_RESERVATION_ATTEMPT_ID_COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_ATTEMPT_ID"
+                    table="company_supplier_reservation" column="attempt_id"
+                    referenceTable="company_supplier_placement_attempt" referenceColumn="attempt_id" onDelete="NO ACTION"/>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_RESERVATION_INVENTORY_ID_COMPANY_SUPPLIER_INVENTORY_INVENTORY_ID"
+                    table="company_supplier_reservation" column="inventory_id"
+                    referenceTable="company_supplier_inventory" referenceColumn="inventory_id" onDelete="NO ACTION"/>
+        <index referenceId="COMPANY_SUPPLIER_RESERVATION_ORDER_ID" indexType="btree">
+            <column name="order_id"/>
+        </index>
+        <index referenceId="COMPANY_SUPPLIER_RESERVATION_STATUS" indexType="btree">
+            <column name="status"/>
+        </index>
+    </table>
+
+    <table name="company_supplier_reservation_event" resource="default" engine="innodb" comment="Reservation ledger events (append-only)">
+        <column xsi:type="bigint" name="event_id" unsigned="true" nullable="false" identity="true" comment="Event ID"/>
+        <column xsi:type="int" name="reservation_id" unsigned="true" nullable="false" comment="Reservation ID"/>
+        <column xsi:type="int" name="inventory_id" unsigned="true" nullable="false" comment="Inventory ID"/>
+        <column xsi:type="varchar" name="type" length="16" nullable="false" comment="reserve, fulfil or release"/>
+        <column xsi:type="decimal" name="qty" scale="4" precision="12" nullable="false" comment="Qty"/>
+        <column xsi:type="varchar" name="source" length="64" nullable="false" comment="What caused the event"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at (DB time)"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="event_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_RESERVATION_EVENT_RESERVATION_ID_COMPANY_SUPPLIER_RESERVATION_RESERVATION_ID"
+                    table="company_supplier_reservation_event" column="reservation_id"
+                    referenceTable="company_supplier_reservation" referenceColumn="reservation_id" onDelete="NO ACTION"/>
+        <constraint xsi:type="foreign" referenceId="COMPANY_SUPPLIER_RESERVATION_EVENT_INVENTORY_ID_COMPANY_SUPPLIER_INVENTORY_INVENTORY_ID"
+                    table="company_supplier_reservation_event" column="inventory_id"
+                    referenceTable="company_supplier_inventory" referenceColumn="inventory_id" onDelete="NO ACTION"/>
+        <index referenceId="COMPANY_SUPPLIER_RESERVATION_EVENT_INVENTORY_ID_TYPE_EVENT_ID" indexType="btree">
+            <column name="inventory_id"/>
+            <column name="type"/>
+            <column name="event_id"/>
+        </index>
+        <index referenceId="COMPANY_SUPPLIER_RESERVATION_EVENT_INVENTORY_ID_TYPE_CREATED_AT" indexType="btree">
+            <column name="inventory_id"/>
+            <column name="type"/>
+            <column name="created_at"/>
+        </index>
+    </table>
+</schema>

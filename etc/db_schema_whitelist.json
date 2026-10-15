@@ -1,0 +1,207 @@
+{
+    "company_supplier": {
+        "column": {
+            "supplier_id": true,
+            "code": true,
+            "name": true,
+            "is_active": true,
+            "created_at": true,
+            "updated_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_CODE": true
+        }
+    },
+    "company_supplier_website": {
+        "column": {
+            "supplier_id": true,
+            "website_id": true,
+            "is_active": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_WS_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID": true,
+            "COMPANY_SUPPLIER_WEBSITE_WEBSITE_ID_STORE_WEBSITE_WEBSITE_ID": true
+        }
+    },
+    "company_supplier_assignment": {
+        "column": {
+            "assignment_id": true,
+            "sku": true,
+            "website_id": true,
+            "supplier_id": true,
+            "created_at": true,
+            "updated_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_ASSIGNMENT_SKU_WEBSITE_ID": true,
+            "FK_4D58A5FEDBCDEBF6282C1CB1F679B99F": true,
+            "COMPANY_SUPPLIER_ASSIGNMENT_WEBSITE_ID_STORE_WEBSITE_WEBSITE_ID": true
+        }
+    },
+    "company_supplier_inventory": {
+        "column": {
+            "inventory_id": true,
+            "supplier_id": true,
+            "sku": true,
+            "website_id": true,
+            "quantity": true,
+            "reserved_qty": true,
+            "fulfilled_pending_qty": true,
+            "unit_cost": true,
+            "currency": true,
+            "last_update_id": true,
+            "last_applied_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_INVENTORY_SUPPLIER_ID_SKU_WEBSITE_ID": true,
+            "COMPANY_SUPPLIER_INV_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID": true
+        }
+    },
+    "company_supplier_update": {
+        "column": {
+            "update_id": true,
+            "supplier_id": true,
+            "idempotency_key": true,
+            "payload_hash": true,
+            "sku": true,
+            "website_id": true,
+            "quantity": true,
+            "unit_cost": true,
+            "currency": true,
+            "fulfil_watermark": true,
+            "accepted_at": true,
+            "status": true,
+            "attempts": true,
+            "claim_token": true,
+            "lease_until": true,
+            "last_attempt_at": true,
+            "next_attempt_at": true,
+            "processed_at": true,
+            "error_code": true,
+            "safe_error": true
+        },
+        "index": {
+            "COMPANY_SUPPLIER_UPDATE_STATUS_NEXT_ATTEMPT_AT": true,
+            "COMPANY_SUPPLIER_UPDATE_STATUS_LEASE_UNTIL": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_UPDATE_SUPPLIER_ID_IDEMPOTENCY_KEY": true,
+            "COMPANY_SUPPLIER_UPDATE_SUPPLIER_ID_COMPANY_SUPPLIER_SUPPLIER_ID": true
+        }
+    },
+    "company_supplier_outbox": {
+        "column": {
+            "outbox_id": true,
+            "update_id": true,
+            "claim_token": true,
+            "claimed_until": true,
+            "published_at": true,
+            "next_publish_at": true,
+            "attempts": true,
+            "created_at": true
+        },
+        "index": {
+            "COMPANY_SUPPLIER_OUTBOX_PUBLISHED_AT_NEXT_PUBLISH_AT": true,
+            "COMPANY_SUPPLIER_OUTBOX_PUBLISHED_AT_CLAIMED_UNTIL": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_OUTBOX_UPDATE_ID": true,
+            "FK_06B9F503516C63C70AB4982CC9A572CB": true
+        }
+    },
+    "company_supplier_update_event": {
+        "column": {
+            "event_id": true,
+            "update_id": true,
+            "from_status": true,
+            "to_status": true,
+            "attempt": true,
+            "safe_message": true,
+            "created_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "FK_2759E662136B04C1D85593A98A0FC869": true
+        }
+    },
+    "company_supplier_placement_attempt": {
+        "column": {
+            "attempt_id": true,
+            "quote_id": true,
+            "reserved_order_id": true,
+            "order_id": true,
+            "status": true,
+            "lease_until": true,
+            "detached_at": true,
+            "started_at": true,
+            "updated_at": true,
+            "completed_at": true
+        },
+        "index": {
+            "COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_QUOTE_ID_STATUS": true,
+            "COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_STATUS_LEASE_UNTIL": true,
+            "COMPANY_SUPPLIER_PLACEMENT_ATTEMPT_ORDER_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    },
+    "company_supplier_reservation": {
+        "column": {
+            "reservation_id": true,
+            "attempt_id": true,
+            "inventory_id": true,
+            "quote_item_id": true,
+            "active_quote_item_id": true,
+            "order_id": true,
+            "order_item_id": true,
+            "qty_source_item_id": true,
+            "sku": true,
+            "website_id": true,
+            "qty_reserved": true,
+            "qty_fulfilled": true,
+            "qty_released": true,
+            "status": true,
+            "created_at": true,
+            "updated_at": true
+        },
+        "index": {
+            "COMPANY_SUPPLIER_RESERVATION_ORDER_ID": true,
+            "COMPANY_SUPPLIER_RESERVATION_STATUS": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "COMPANY_SUPPLIER_RESERVATION_ATTEMPT_ID_QUOTE_ITEM_ID": true,
+            "COMPANY_SUPPLIER_RESERVATION_ACTIVE_QUOTE_ITEM_ID": true,
+            "COMPANY_SUPPLIER_RESERVATION_ORDER_ITEM_ID": true,
+            "FK_B36350BC8B9019E466A7672234A3807B": true,
+            "COMPANY_SUPPLIER_RESERVATION_INV_ID_COMPANY_SUPPLIER_INV_INV_ID": true
+        }
+    },
+    "company_supplier_reservation_event": {
+        "column": {
+            "event_id": true,
+            "reservation_id": true,
+            "inventory_id": true,
+            "type": true,
+            "qty": true,
+            "source": true,
+            "created_at": true
+        },
+        "index": {
+            "COMPANY_SUPPLIER_RESERVATION_EVENT_INVENTORY_ID_TYPE_EVENT_ID": true,
+            "COMPANY_SUPPLIER_RESERVATION_EVENT_INVENTORY_ID_TYPE_CREATED_AT": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "FK_793B2C4B126CCC196B7153910733B841": true,
+            "FK_93493675D3516E6F72DC03230205AC7F": true
+        }
+    }
+}
