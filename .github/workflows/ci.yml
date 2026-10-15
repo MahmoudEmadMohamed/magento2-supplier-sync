@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Static analysis and unit tests. The scenario harnesses need a running Magento install with a database and a
+# message broker, so they are documented in the README and run locally (make scenarios), not faked here.
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: module
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: bcmath, intl, soap, sockets, gd, zip, pdo_mysql
+          tools: composer:v2
+          coverage: none
+
+      - name: Install the module with its Magento dependencies (Mage-OS public repository)
+        run: |
+          mkdir ci && cd ci
+          composer init --no-interaction --name=ci/supplier-sync --stability=stable
+          composer config repositories.mage-os composer https://repo.mage-os.org/
+          composer config repositories.module '{"type": "path", "url": "../module", "options": {"symlink": true}}'
+          composer config --no-plugins allow-plugins true
+          composer require --no-interaction --no-progress \
+            'company/module-supplier-sync:*@dev' \
+            magento/magento-coding-standard \
+            'phpstan/phpstan:^1.12' \
+            'phpunit/phpunit:^12'
+
+      - name: phpcs (Magento2 standard)
+        working-directory: ci
+        run: vendor/bin/phpcs --standard=../module/phpcs.xml.dist ../module
+
+      - name: phpstan (level 6)
+        working-directory: ci
+        run: vendor/bin/phpstan analyse -c ../module/phpstan.neon.dist --autoload-file=vendor/autoload.php --memory-limit=1G --no-progress
+
+      - name: Unit tests
+        working-directory: ci
+        run: vendor/bin/phpunit -c ../module/phpunit.xml.dist --bootstrap vendor/autoload.php

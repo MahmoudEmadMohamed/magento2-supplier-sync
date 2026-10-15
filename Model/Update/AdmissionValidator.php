@@ -13,6 +13,7 @@ use Company\SupplierSync\Exception\ApiException;
 use Company\SupplierSync\Model\Decimal;
 use Company\SupplierSync\Model\WebsiteResolver;
 use Magento\Catalog\Api\ProductRepositoryInterface;
+use Magento\Catalog\Model\Product;
 use Magento\Catalog\Model\Product\Type;
 use Magento\CatalogInventory\Api\StockRegistryInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
@@ -82,7 +83,7 @@ class AdmissionValidator
                 ['sku' => $payload->sku, 'type' => (string)$product->getTypeId()]
             );
         }
-        $productWebsiteIds = (array)$product->getExtensionAttributes()?->getWebsiteIds();
+        $productWebsiteIds = $product instanceof Product ? (array)$product->getWebsiteIds() : [];
         if (!in_array($websiteId, array_map('intval', $productWebsiteIds), true)) {
             throw new ApiException(
                 ApiException::PRODUCT_NOT_IN_WEBSITE,
