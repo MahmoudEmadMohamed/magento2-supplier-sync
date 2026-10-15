@@ -153,6 +153,8 @@ A detached `paying` attempt lets the customer retry while the first request migh
 
 All quantity and price math uses bcmath on strings. Values are normalized before hashing so that `49.99` and `49.990` produce the same idempotency hash.
 
+Suppliers should send decimals as JSON strings. Magento's REST layer turns JSON numbers into strings through PHP floats before the module sees them, so a number with more significant digits than a double holds would arrive rounded. Exponent notation sent as a JSON number (`1e3`) arrives as `"1000"`; as a string it is rejected.
+
 ## 11. Supported scope
 
 **Supported:** synchronous checkout through `OrderManagementInterface::place` — storefront, REST and GraphQL carts, and admin order create — for simple products and configurable children.
