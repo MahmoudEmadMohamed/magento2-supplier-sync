@@ -30,7 +30,7 @@ class DecimalTest extends TestCase
     /**
      * Valid inputs.
      *
-     * @return array<string, array{string, int, string}>
+     * @return array<string,array{string,int,string}>
      */
     public static function validProvider(): array
     {
@@ -60,7 +60,7 @@ class DecimalTest extends TestCase
     /**
      * Invalid inputs.
      *
-     * @return array<string, array{string}>
+     * @return array<string,array{string}>
      */
     public static function invalidProvider(): array
     {

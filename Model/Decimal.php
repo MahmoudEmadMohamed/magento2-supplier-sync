@@ -45,6 +45,25 @@ class Decimal
     }
 
     /**
+     * Convert a Magento quantity (DB string, int or float) to a quantity-scale string.
+     *
+     * Magento quantities have at most 4 decimals, so rounding a float to 4 places is exact for them.
+     *
+     * @param string|int|float|null $value
+     * @return string
+     */
+    public static function fromNumber(string|int|float|null $value): string
+    {
+        if ($value === null || $value === '') {
+            return bcadd('0', '0', self::QTY_SCALE);
+        }
+        if (is_string($value) && preg_match('/^-?\d+(\.\d+)?$/', $value)) {
+            return bcadd($value, '0', self::QTY_SCALE);
+        }
+        return sprintf('%.' . self::QTY_SCALE . 'F', (float)$value);
+    }
+
+    /**
      * Whether a normalized value has a non-zero fractional part.
      *
      * @param string $value

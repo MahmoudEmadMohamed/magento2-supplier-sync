@@ -5,8 +5,11 @@ parameters:
     excludePaths:
         - vendor/*
         - Test/Integration/*
+        - Test/Concurrency/*
     treatPhpDocTypesAsCertain: false
     reportUnmatchedIgnoredErrors: false
     ignoreErrors:
         # Magento factories and interceptors are generated at runtime.
         - '#(unknown class|invalid type|non-existent class) .+Factory#'
+        # Declared on the concrete PDO adapter, used throughout core with AdapterInterface.
+        - '#Call to an undefined method Magento\\Framework\\DB\\Adapter\\AdapterInterface::lastInsertId\(\)#'

@@ -30,7 +30,7 @@ interface SupplierWebsiteManagementInterface
      * Website rows for a supplier: [website_id => is_active].
      *
      * @param int $supplierId
-     * @return array<int, bool>
+     * @return array<int,bool>
      */
     public function getWebsites(int $supplierId): array;
 }

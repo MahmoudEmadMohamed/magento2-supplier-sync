@@ -50,7 +50,7 @@ interface AssignmentManagementInterface
      * Rows of sku, website_id, supplier_id, supplier_code.
      *
      * @param string|null $sku
-     * @return array<int, array<string, mixed>>
+     * @return array<int,array<string,mixed>>
      */
     public function getList(?string $sku = null): array;
 }

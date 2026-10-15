@@ -22,6 +22,12 @@
         </arguments>
     </virtualType>
 
+    <type name="Company\SupplierSync\Model\Placement\AttemptResolver">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+
     <!-- CLI -->
     <type name="Magento\Framework\Console\CommandList">
         <arguments>
@@ -32,6 +38,7 @@
                 <item name="supplier_sync_assignment_set" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentSetCommand</item>
                 <item name="supplier_sync_assignment_remove" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentRemoveCommand</item>
                 <item name="supplier_sync_assignment_list" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentListCommand</item>
+                <item name="supplier_sync_dev_reserve_burst" xsi:type="object">Company\SupplierSync\Console\Command\DevReserveBurstCommand</item>
             </argument>
         </arguments>
     </type>

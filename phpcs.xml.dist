@@ -11,8 +11,9 @@
     <rule ref="Generic.Files.LineLength">
         <exclude-pattern>*.xml</exclude-pattern>
     </rule>
-    <!-- Decimal is a stateless bcmath helper; static calls are intentional. -->
+    <!-- Decimal and ReservationStatus::derive are pure functions; static calls are intentional. -->
     <rule ref="Magento2.Functions.StaticFunction">
         <exclude-pattern>*/Model/Decimal.php</exclude-pattern>
+        <exclude-pattern>*/Model/ReservationStatus.php</exclude-pattern>
     </rule>
 </ruleset>
