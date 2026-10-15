@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- Service contracts -->
+    <preference for="Company\SupplierSync\Api\Data\SupplierInterface" type="Company\SupplierSync\Model\Supplier"/>
+    <preference for="Company\SupplierSync\Api\Data\SupplierSearchResultsInterface" type="Company\SupplierSync\Model\SupplierSearchResults"/>
+    <preference for="Company\SupplierSync\Api\SupplierRepositoryInterface" type="Company\SupplierSync\Model\SupplierRepository"/>
+    <preference for="Company\SupplierSync\Api\SupplierWebsiteManagementInterface" type="Company\SupplierSync\Model\SupplierWebsiteManagement"/>
+    <preference for="Company\SupplierSync\Api\AssignmentManagementInterface" type="Company\SupplierSync\Model\AssignmentManagement"/>
+
+    <!-- Dedicated logger: var/log/supplier_sync.log -->
+    <virtualType name="Company\SupplierSync\Logger\Logger" type="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="name" xsi:type="string">supplier_sync</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="file" xsi:type="object">Company\SupplierSync\Logger\Handler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+
+    <!-- CLI -->
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="supplier_sync_supplier_create" xsi:type="object">Company\SupplierSync\Console\Command\SupplierCreateCommand</item>
+                <item name="supplier_sync_supplier_update" xsi:type="object">Company\SupplierSync\Console\Command\SupplierUpdateCommand</item>
+                <item name="supplier_sync_supplier_list" xsi:type="object">Company\SupplierSync\Console\Command\SupplierListCommand</item>
+                <item name="supplier_sync_assignment_set" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentSetCommand</item>
+                <item name="supplier_sync_assignment_remove" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentRemoveCommand</item>
+                <item name="supplier_sync_assignment_list" xsi:type="object">Company\SupplierSync\Console\Command\AssignmentListCommand</item>
+            </argument>
+        </arguments>
+    </type>
+</config>
