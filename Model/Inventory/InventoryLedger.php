@@ -51,6 +51,31 @@ class InventoryLedger
     }
 
     /**
+     * Lock the inventory row for a supplier, SKU and website, or return null if it does not exist.
+     *
+     * A locking read returns the latest committed row even when this transaction's consistent-read snapshot is
+     * older (REPEATABLE READ), e.g. a row created by a concurrent transaction that committed while we waited.
+     *
+     * @param AdapterInterface $connection
+     * @param int $supplierId
+     * @param string $sku
+     * @param int $websiteId
+     * @return array<string,mixed>|null
+     */
+    public function lockByKey(AdapterInterface $connection, int $supplierId, string $sku, int $websiteId): ?array
+    {
+        $row = $connection->fetchRow(
+            $connection->select()
+                ->from($this->resource->getTableName(self::TABLE))
+                ->where('supplier_id = ?', $supplierId)
+                ->where('sku = ?', $sku)
+                ->where('website_id = ?', $websiteId)
+                ->forUpdate(true)
+        );
+        return $row ?: null;
+    }
+
+    /**
      * Lock inventory rows one by one in ascending id order (the global lock order) and return them by id.
      *
      * @param AdapterInterface $connection

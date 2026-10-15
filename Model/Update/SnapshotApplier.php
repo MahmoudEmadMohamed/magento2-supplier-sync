@@ -68,8 +68,12 @@ class SnapshotApplier
             [$supplierId, $sku, $websiteId]
         );
         // phpcs:enable Magento2.SQL.RawQuery
-        $inventoryId = (int)$this->inventoryLedger->findId($connection, $supplierId, $sku, $websiteId);
-        $row = $this->inventoryLedger->lockRows($connection, [$inventoryId])[$inventoryId];
+        // Locking read: a plain read could miss a row another first apply committed while we waited above.
+        $row = $this->inventoryLedger->lockByKey($connection, $supplierId, $sku, $websiteId);
+        if ($row === null) {
+            throw new \LogicException(sprintf('Inventory row for update %d was not created.', $update['update_id']));
+        }
+        $inventoryId = (int)$row['inventory_id'];
 
         if ((int)$update['update_id'] <= (int)$row['last_update_id']) {
             return ['status' => UpdateStatus::SKIPPED_STALE, 'error_code' => null, 'error' => null];
@@ -77,10 +81,13 @@ class SnapshotApplier
 
         // Shipments this snapshot cannot be assumed to reflect: recorded after acceptance (id above the
         // watermark), or inside the lag window before it. See docs/business-rules.md, section 3.
+        // Locking read, so fulfils committed after this transaction's snapshot are counted too. New fulfils
+        // for this row need the inventory lock we hold, so the sum cannot change before we commit.
         $pending = (string)$connection->fetchOne(
             sprintf(
                 'SELECT COALESCE(SUM(qty), 0) FROM %s WHERE inventory_id = ? AND type = \'fulfil\''
-                . ' AND (event_id > ? OR created_at > CAST(? AS DATETIME) - INTERVAL %d SECOND)',
+                . ' AND (event_id > ? OR created_at > CAST(? AS DATETIME) - INTERVAL %d SECOND)'
+                . ' LOCK IN SHARE MODE',
                 $this->resource->getTableName(InventoryLedger::EVENT_TABLE),
                 $this->config->getSnapshotMaxLagSeconds()
             ),
