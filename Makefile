@@ -6,9 +6,9 @@ BIN = $(MAGENTO_ROOT)/vendor/bin
 
 .PHONY: install phpcs phpstan unit integration test consumer dispatch burst
 
-install: ## Enable the module and apply the schema
+install: ## Enable the module, apply the schema, regenerate interceptors (do not use --keep-generated)
 	$(MAGENTO) module:enable Company_SupplierSync
-	$(MAGENTO) setup:upgrade --keep-generated
+	$(MAGENTO) setup:upgrade
 	$(MAGENTO) cache:flush
 
 phpcs:

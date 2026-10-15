@@ -9,5 +9,8 @@
         <job name="supplier_sync_outbox_dispatch" instance="Company\SupplierSync\Cron\DispatchOutbox" method="execute">
             <schedule>* * * * *</schedule>
         </job>
+        <job name="supplier_sync_reconcile" instance="Company\SupplierSync\Cron\Reconcile" method="execute">
+            <schedule>*/5 * * * *</schedule>
+        </job>
     </group>
 </config>

@@ -15,15 +15,7 @@
     <preference for="Company\SupplierSync\Api\StockUpdateStatusRepositoryInterface" type="Company\SupplierSync\Model\Update\StockUpdateStatusRepository"/>
     <preference for="Company\SupplierSync\Api\InventoryQueryInterface" type="Company\SupplierSync\Model\Inventory\InventoryQuery"/>
 
-    <!-- Dedicated logger: var/log/supplier_sync.log -->
-    <virtualType name="Company\SupplierSync\Logger\Logger" type="Magento\Framework\Logger\Monolog">
-        <arguments>
-            <argument name="name" xsi:type="string">supplier_sync</argument>
-            <argument name="handlers" xsi:type="array">
-                <item name="file" xsi:type="object">Company\SupplierSync\Logger\Handler</item>
-            </argument>
-        </arguments>
-    </virtualType>
+    <!-- Classes that log use the dedicated logger (var/log/supplier_sync.log) -->
 
     <type name="Company\SupplierSync\Model\Placement\AttemptResolver">
         <arguments>
@@ -57,6 +49,27 @@
         </arguments>
     </type>
 
+    <type name="Company\SupplierSync\Plugin\PlaceOrderPlugin">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Company\SupplierSync\Observer\ReconcileOrderItem">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+    <type name="Company\SupplierSync\Model\Placement\Reconciliation">
+        <arguments>
+            <argument name="logger" xsi:type="object">Company\SupplierSync\Logger\Logger</argument>
+        </arguments>
+    </type>
+
+    <!-- Supplier holds around order placement (see docs/architecture.md, Hooks) -->
+    <type name="Magento\Sales\Api\OrderManagementInterface">
+        <plugin name="company_supplier_sync_reserve" type="Company\SupplierSync\Plugin\PlaceOrderPlugin"/>
+    </type>
+
     <!-- CLI -->
     <type name="Magento\Framework\Console\CommandList">
         <arguments>
@@ -72,6 +85,10 @@
                 <item name="supplier_sync_update_retry" xsi:type="object">Company\SupplierSync\Console\Command\UpdateRetryCommand</item>
                 <item name="supplier_sync_outbox_dispatch" xsi:type="object">Company\SupplierSync\Console\Command\OutboxDispatchCommand</item>
                 <item name="supplier_sync_inventory_show" xsi:type="object">Company\SupplierSync\Console\Command\InventoryShowCommand</item>
+                <item name="supplier_sync_reservation_reconcile" xsi:type="object">Company\SupplierSync\Console\Command\ReservationReconcileCommand</item>
+                <item name="supplier_sync_attempt_list" xsi:type="object">Company\SupplierSync\Console\Command\AttemptListCommand</item>
+                <item name="supplier_sync_attempt_inspect" xsi:type="object">Company\SupplierSync\Console\Command\AttemptInspectCommand</item>
+                <item name="supplier_sync_attempt_resolve" xsi:type="object">Company\SupplierSync\Console\Command\AttemptResolveCommand</item>
                 <item name="supplier_sync_dev_reserve_burst" xsi:type="object">Company\SupplierSync\Console\Command\DevReserveBurstCommand</item>
             </argument>
         </arguments>

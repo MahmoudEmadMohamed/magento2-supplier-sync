@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Company. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <!-- Fires in Order::place() before Payment::place(). -->
+    <event name="sales_order_place_before">
+        <observer name="company_supplier_sync_pre_payment_fence" instance="Company\SupplierSync\Observer\PrePaymentFence"/>
+    </event>
+    <!-- Fires inside the order save transaction, after the order row is written. -->
+    <event name="sales_order_save_after">
+        <observer name="company_supplier_sync_pre_commit_fence" instance="Company\SupplierSync\Observer\PreCommitFence"/>
+    </event>
+    <!-- Fires after commit for every order item whose quantities changed. -->
+    <event name="sales_order_item_save_commit_after">
+        <observer name="company_supplier_sync_reconcile" instance="Company\SupplierSync\Observer\ReconcileOrderItem"/>
+    </event>
+</config>
