@@ -39,7 +39,7 @@ The Composer constraints target the `magento/*` packages (Mage-OS replaces them)
 ### As a Composer package
 
 ```bash
-composer config repositories.supplier-sync vcs https://github.com/<owner>/<repo>
+composer config repositories.supplier-sync vcs https://github.com/MahmoudEmadMohamed/magento2-supplier-sync
 composer require company/module-supplier-sync:dev-main
 bin/magento module:enable Company_SupplierSync
 bin/magento setup:upgrade          # do NOT pass --keep-generated (see below)
@@ -49,7 +49,7 @@ bin/magento cache:flush
 ### In `app/code`
 
 ```bash
-git clone https://github.com/<owner>/<repo> app/code/Company/SupplierSync
+git clone https://github.com/MahmoudEmadMohamed/magento2-supplier-sync app/code/Company/SupplierSync
 bin/magento module:enable Company_SupplierSync
 bin/magento setup:upgrade
 bin/magento cache:flush
