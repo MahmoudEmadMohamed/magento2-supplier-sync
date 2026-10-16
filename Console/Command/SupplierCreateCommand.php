@@ -44,7 +44,7 @@ class SupplierCreateCommand extends Command
     {
         $this->setName('supplier-sync:supplier:create')
             ->setDescription('Create a supplier and enable it for websites')
-            ->addArgument('code', InputArgument::REQUIRED, 'Supplier code (lowercase letters, digits, _ or -)')
+            ->addArgument('code', InputArgument::REQUIRED, 'Supplier code (letters, digits, _ or -)')
             ->addArgument('name', InputArgument::REQUIRED, 'Supplier name')
             ->addOption(
                 'website',

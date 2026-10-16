@@ -19,7 +19,8 @@ use Magento\Framework\Exception\CouldNotSaveException;
 use Magento\Framework\Exception\NoSuchEntityException;
 
 /**
- * Loads and saves suppliers; code uniqueness is enforced by UNIQUE(code).
+ * Loads and saves suppliers. Codes are unique case-insensitively (UNIQUE(code) with a case-insensitive collation),
+ * so ACME and acme are the same supplier and lookups by code ignore case.
  */
 class SupplierRepository implements SupplierRepositoryInterface
 {
@@ -47,9 +48,9 @@ class SupplierRepository implements SupplierRepositoryInterface
     public function save(SupplierInterface $supplier): SupplierInterface
     {
         $code = trim($supplier->getCode());
-        if (!preg_match('/^[a-z0-9_-]{1,64}$/', $code)) {
+        if (!preg_match('/^[A-Za-z0-9_-]{1,64}$/', $code)) {
             throw new CouldNotSaveException(
-                __('Supplier code must be 1-64 characters: lowercase letters, digits, "_" or "-".')
+                __('Supplier code must be 1-64 characters: letters, digits, "_" or "-".')
             );
         }
         if (trim($supplier->getName()) === '') {

@@ -79,7 +79,8 @@ class PayloadNormalizer
             'currency' => $currency,
             'quantity' => $qty,
             'sku' => $sku,
-            'supplier_code' => $supplierCode,
+            // Supplier codes are case-insensitive identifiers, so ACME and acme must hash the same.
+            'supplier_code' => mb_strtolower($supplierCode),
             'unit_price' => $price,
             'website_code' => $websiteCode,
         ];
