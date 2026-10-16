@@ -66,6 +66,50 @@ $h->check('one reservation (unmapped line keeps normal behaviour)', count($res) 
 $h->check('reservation linked to the order item', (int)$res[0]['order_item_id'] === $h->orderItemId($orderId, $sku) && $res[0]['status'] === 'open');
 $h->check('ledger: 10 / reserved 3 / pending 0', $counters() === '10/3/0', $counters());
 
+$h->section('Supported checkout paths');
+$checkmo = fn () => $om->create(\Magento\Quote\Api\Data\PaymentInterface::class)->setMethod('checkmo');
+$paths = [
+    'REST/storefront guest (GuestPaymentInformationManagement)' => function () use ($h, $om, $sku, $checkmo) {
+        $q = $h->quote([['sku' => $sku, 'qty' => 1]]);
+        $om->get(\Magento\Checkout\Api\GuestPaymentInformationManagementInterface::class)
+            ->savePaymentInformationAndPlaceOrder($h->maskQuote($q), 'scenario@example.com', $checkmo());
+        return $q;
+    },
+    'REST/storefront logged-in customer (PaymentInformationManagement)' => function () use ($h, $om, $sku, $checkmo) {
+        $q = $h->quote([['sku' => $sku, 'qty' => 1]], $h->customer());
+        $om->get(\Magento\Checkout\Api\PaymentInformationManagementInterface::class)
+            ->savePaymentInformationAndPlaceOrder($q, $checkmo());
+        return $q;
+    },
+    'GraphQL placeOrder (QuoteGraphQl PlaceOrder)' => function () use ($h, $om, $sku) {
+        $q = $h->quote([['sku' => $sku, 'qty' => 1]]);
+        $cart = $om->get(\Magento\Quote\Api\CartRepositoryInterface::class)->get($q);
+        $om->get(\Magento\QuoteGraphQl\Model\Cart\PlaceOrder::class)->execute($cart, $h->maskQuote($q), 0);
+        return $q;
+    },
+    'admin order create (QuoteManagement::submit)' => function () use ($h, $sku) {
+        $q = $h->quote([['sku' => $sku, 'qty' => 1]]);
+        $h->submitQuote($q);
+        return $q;
+    },
+];
+foreach ($paths as $label => $place) {
+    $q = null;
+    $error = $try(function () use ($place, &$q) {
+        $q = $place();
+    });
+    $attempt = $q ? $h->attemptForQuote($q) : null;
+    $linked = $attempt ? $h->reservations(['attempt_id = ?' => (int)$attempt['attempt_id']]) : [];
+    $h->check("$label: hold taken, order linked", $error === null && ($attempt['status'] ?? '') === 'completed'
+        && count($linked) === 1 && $linked[0]['order_item_id'] !== null, (string)$error);
+    if (!empty($attempt['order_id'])) {
+        $om->get(\Magento\Sales\Api\OrderManagementInterface::class)->cancel((int)$attempt['order_id']);
+        $closed = $h->reservations(['attempt_id = ?' => (int)$attempt['attempt_id']])[0]['status'] ?? '';
+        $h->check("$label: cancelling the order releases the hold", $closed === 'closed');
+    }
+}
+$h->snapshot($sku, '10'); // later sections expect 10 with 3 reserved by the first order
+
 $h->section('Insufficient supplier stock fails before payment');
 CaptureThenFailPayment::$captures = 0;
 $q = $h->quote([['sku' => $sku, 'qty' => 8]]);

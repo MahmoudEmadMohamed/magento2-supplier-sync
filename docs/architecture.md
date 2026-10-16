@@ -207,9 +207,10 @@ The counters `qty_reserved`, `qty_fulfilled` and `qty_released` are authoritativ
 | Unauthorized requests and ACL | `rest-scenarios.php` "Authentication and ACL" |
 | Identical retries, conflicting keys, concurrent identical submissions | `rest-scenarios.php`; `queue-scenarios.php` "Concurrency" |
 | Duplicate and out-of-order messages | `queue-scenarios.php` "Apply and ordering", "Duplicate deliveries" |
-| Publication failure, lost messages, abandoned dispatcher claims | `queue-scenarios.php` "Lost and unpublished messages" |
+| Publication failure, lost messages, abandoned dispatcher claims | `queue-scenarios.php` "Broker outage at intake, then outbox recovery" (simulated outage, recovery through RabbitMQ and the real consumer), "Lost and unpublished messages" |
 | Consumer interruption, takeover, lock ownership | `queue-scenarios.php` "Crash after claim", "Takeover", "Sweep never steals…" |
 | Retry exhaustion and recovery | `queue-scenarios.php` "Poison message" |
+| Checkout paths: guest and customer payment-information placement, cart `placeOrder`, GraphQL `PlaceOrder`, admin submit | `placement-scenarios.php` "Supported checkout paths" (HTTP transports not exercised; see README limitations) |
 | Duplicate reservations, multi-line aggregation, configurables | `placement-scenarios.php` |
 | Payment failure, order save failure, exception after commit | `placement-scenarios.php` |
 | Crash recovery for each attempt state | `placement-scenarios.php` "Recovery by attempt state", "Slow payment" |
