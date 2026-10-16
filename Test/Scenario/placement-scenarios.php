@@ -351,11 +351,39 @@ $om->get(\Magento\Sales\Api\OrderManagementInterface::class)->cancel($o);
 $h->check('disabled supplier: releases still happen', $r()['status'] === 'closed' && $r()['qty_released'] === '2.0000');
 $h->supplier();
 
-$h->section('Event ids follow commit order per inventory row');
-$events = $db->fetchAll('SELECT event_id, created_at FROM company_supplier_reservation_event WHERE inventory_id = ? ORDER BY event_id', [(int)$inv()['inventory_id']]);
-$sorted = $events;
-usort($sorted, fn ($x, $y) => [$x['created_at'], $x['event_id']] <=> [$y['created_at'], $y['event_id']]);
-$h->check('event_id order equals timestamp order', array_column($events, 'event_id') === array_column($sorted, 'event_id'));
+$h->section('Fulfil events become visible in id order under concurrent shipments');
+// The snapshot watermark assumes that, per inventory row, a fulfil event that is not yet visible always gets a
+// higher id than every visible one. Eight processes ship eight orders at once while a ninth keeps sampling the
+// committed fulfil events: every sample must be exactly "all final ids up to the highest visible id".
+$raceSku = 'SUPPLIER-SYNC-F';
+$h->product($raceSku);
+$om->get(\Company\SupplierSync\Api\AssignmentManagementInterface::class)->assign($raceSku, 'base', 'scenario-place');
+$h->snapshot($raceSku, '100');
+$raceOrders = [];
+for ($i = 0; $i < 8; $i++) {
+    $raceOrders[] = $h->placeQuote($h->quote([['sku' => $raceSku, 'qty' => 1]]));
+}
+$raceInventory = (int)$inv($raceSku)['inventory_id'];
+$results = $h->parallel(array_merge(
+    [['sample-fulfil', (string)$raceInventory, '12']],
+    array_map(fn ($id) => ['ship', (string)$id], $raceOrders)
+));
+$samples = $results[0]['result'] ?? [];
+$final = array_column($h->events($raceInventory, 'fulfil'), 'event_id');
+$final = array_map('intval', $final);
+$prefixViolations = 0;
+$intermediate = 0;
+foreach ($samples as $sample) {
+    $max = $sample ? max($sample) : 0;
+    $expected = array_values(array_filter($final, fn ($id) => $id <= $max));
+    $prefixViolations += $sample === $expected ? 0 : 1;
+    $intermediate += (count($sample) > 0 && count($sample) < count($final)) ? 1 : 0;
+}
+$shipped = count(array_filter(array_slice($results, 1), fn ($r) => $r['ok']));
+$h->check('all 8 concurrent shipments succeeded', $shipped === 8, json_encode(array_slice($results, 1, 2)));
+$h->check('8 fulfil events recorded', count($final) === 8);
+$h->check('the sampler observed intermediate states (the shipments overlapped)', $intermediate > 0, "samples=" . count($samples));
+$h->check('every sample is a prefix of the final id order', $prefixViolations === 0, "violations=$prefixViolations");
 
 $h->cleanup();
 exit($h->finish());

@@ -8,6 +8,9 @@
  *   php worker.php <magento_root> <start_at> submit <supplier> <key> <sku> <qty> <price> <currency> <website>
  *   php worker.php <magento_root> <start_at> reconcile <order_id>
  *   php worker.php <magento_root> <start_at> submit-quote <quote_id>   (admin-style placement; doubles active)
+ *   php worker.php <magento_root> <start_at> ship <order_id>              (REST ShipOrder service, all items)
+ *   php worker.php <magento_root> <start_at> sample-fulfil <inventory_id> <seconds>
+ *       Repeatedly reads the committed fulfil event ids of one inventory row; prints the distinct samples.
  *   php worker.php <magento_root> <start_at> rest <mode> <METHOD> <path?query> <token|-> <json body|->
  *       Runs Magento's REST controller in the webapi_rest area (token auth, ACL, routing, error rendering).
  */
@@ -71,6 +74,8 @@ $services = [
     'submit' => \Company\SupplierSync\Api\StockUpdateManagementInterface::class,
     'reconcile' => \Company\SupplierSync\Model\Reservation\ReconcileService::class,
     'submit-quote' => \Magento\Quote\Model\QuoteManagement::class,
+    'ship' => \Magento\Sales\Api\ShipOrderInterface::class,
+    'sample-fulfil' => \Magento\Framework\App\ResourceConnection::class,
 ];
 $service = $om->get($services[$action]);
 usleep(max(0, (int)(((float)$startAt - microtime(true)) * 1e6)));
@@ -83,6 +88,23 @@ try {
         })(),
         'reconcile' => $service->reconcileOrder((int)$args[0]),
         'submit-quote' => $harness->submitQuote((int)$args[0]),
+        'ship' => $service->execute((int)$args[0]),
+        'sample-fulfil' => (function () use ($service, $args) {
+            $connection = $service->getConnection();
+            $until = microtime(true) + (float)$args[1];
+            $samples = [];
+            while (microtime(true) < $until) {
+                // Autocommit: every read sees the latest committed rows.
+                $ids = array_map('intval', $connection->fetchCol(
+                    "SELECT event_id FROM company_supplier_reservation_event"
+                    . " WHERE inventory_id = ? AND type = 'fulfil' ORDER BY event_id",
+                    [(int)$args[0]]
+                ));
+                $samples[implode(',', $ids)] = $ids;
+                usleep(2000);
+            }
+            return array_values($samples);
+        })(),
     };
     echo json_encode(['ok' => true, 'result' => $result]), "\n";
 } catch (\Throwable $e) {

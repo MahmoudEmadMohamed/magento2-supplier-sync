@@ -116,17 +116,25 @@ class Harness
     }
 
     /** Create (or reuse) a simple product enabled on website 1. */
-    public function product(string $sku, bool $decimal = false): void
+    public function product(string $sku, bool $decimal = false, array $websiteIds = [1]): void
     {
         $repo = $this->om->get(\Magento\Catalog\Api\ProductRepositoryInterface::class);
         try {
-            $repo->get($sku);
+            $existing = $repo->get($sku, true, 0, true);
+            $current = array_map('intval', (array)$existing->getWebsiteIds());
+            sort($current);
+            $wanted = $websiteIds;
+            sort($wanted);
+            if ($current !== $wanted) { // e.g. the second-website fixture was recreated with a new id
+                $repo->save($existing->setWebsiteIds($websiteIds));
+                $this->reindex();
+            }
             return;
         } catch (\Magento\Framework\Exception\NoSuchEntityException) {
         }
         $p = $this->om->create(\Magento\Catalog\Model\Product::class);
         $p->setSku($sku)->setName($sku)->setTypeId('simple')->setAttributeSetId(4)->setPrice(10)
-            ->setWebsiteIds([1])->setStatus(1)->setVisibility(4)
+            ->setWebsiteIds($websiteIds)->setStatus(1)->setVisibility(4)
             ->setStockData(['use_config_manage_stock' => 0, 'manage_stock' => 0, 'is_qty_decimal' => (int)$decimal, 'is_in_stock' => 1]);
         $repo->save($p);
         $this->reindex();
@@ -379,6 +387,42 @@ class Harness
         return $results;
     }
 
+    /**
+     * Create (or reuse) a second website `ss_second` with one store group and store view. Returns its id.
+     * Removed by dropSecondWebsite().
+     */
+    public function secondWebsite(): int
+    {
+        $website = $this->om->create(\Magento\Store\Model\Website::class)->load('ss_second', 'code');
+        if ($website->getId()) {
+            return (int)$website->getId();
+        }
+        $website->setCode('ss_second')->setName('Supplier sync second website')->save();
+        $rootCategory = (int)$this->om->get(\Magento\Store\Model\StoreManagerInterface::class)
+            ->getGroup(1)->getRootCategoryId();
+        $group = $this->om->create(\Magento\Store\Model\Group::class)
+            ->setWebsiteId($website->getId())->setName('Second group')->setCode('ss_second_group')
+            ->setRootCategoryId($rootCategory)->save();
+        $store = $this->om->create(\Magento\Store\Model\Store::class)
+            ->setWebsiteId($website->getId())->setGroupId($group->getId())->setCode('ss_second_store')
+            ->setName('Second store')->setIsActive(1)->save();
+        $group->setDefaultStoreId($store->getId())->save();
+        $website->setDefaultGroupId($group->getId())->save();
+        $this->om->get(\Magento\Store\Model\StoreManagerInterface::class)->reinitStores();
+        return (int)$website->getId();
+    }
+
+    /** Delete the second website fixture (cascades its group and store). */
+    public function dropSecondWebsite(): void
+    {
+        $website = $this->om->create(\Magento\Store\Model\Website::class)->load('ss_second', 'code');
+        if ($website->getId()) {
+            $this->om->get(\Magento\Framework\Registry::class)->register('isSecureArea', true, true);
+            $website->delete();
+            $this->om->get(\Magento\Store\Model\StoreManagerInterface::class)->reinitStores();
+        }
+    }
+
     /** Create (or reuse) a second supplier, enabled on base, for reassignment scenarios. Returns its code. */
     public function alternateSupplier(): string
     {
@@ -402,14 +446,15 @@ class Harness
     public function cleanup(): void
     {
         $db = $this->db;
-        $supplierIds = array_map('intval', $db->fetchCol(
-            'SELECT supplier_id FROM company_supplier WHERE code IN (?)',
-            [[$this->supplierCode, $this->supplierCode . '-alt']]
+        // Arrays are expanded by Select::where(), not by positional bind parameters.
+        $col = fn (string $table, string $column, string $where, array $values) => array_map('intval', $db->fetchCol(
+            $db->select()->distinct()->from($table, [$column])->where($where, $values)
         ));
+        $supplierIds = $col('company_supplier', 'supplier_id', 'code IN (?)', [$this->supplierCode, $this->supplierCode . '-alt']);
         if ($supplierIds) {
-            $inv = $db->fetchCol('SELECT inventory_id FROM company_supplier_inventory WHERE supplier_id IN (?)', [$supplierIds]);
+            $inv = $col('company_supplier_inventory', 'inventory_id', 'supplier_id IN (?)', $supplierIds);
             if ($inv) {
-                $attempts = $db->fetchCol('SELECT DISTINCT attempt_id FROM company_supplier_reservation WHERE inventory_id IN (?)', [$inv]);
+                $attempts = $col('company_supplier_reservation', 'attempt_id', 'inventory_id IN (?)', $inv);
                 $db->delete('company_supplier_reservation_event', ['inventory_id IN (?)' => $inv]);
                 $db->delete('company_supplier_reservation', ['inventory_id IN (?)' => $inv]);
                 if ($attempts) {
