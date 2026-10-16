@@ -27,10 +27,38 @@ class Harness
 
     public function __construct(public readonly string $root, public readonly string $supplierCode)
     {
+        self::requireRuntimeDi($root);
         require_once $root . '/app/bootstrap.php';
         $this->om = Bootstrap::create(BP, $_SERVER)->getObjectManager();
         $this->om->get(\Magento\Framework\App\State::class)->setAreaCode('adminhtml');
         $this->db = $this->om->get(ResourceConnection::class)->getConnection();
+    }
+
+    /**
+     * Stop unless Magento builds its object graph at runtime.
+     *
+     * After setup:di:compile, constructor arguments come from generated/metadata and the harness can no longer swap
+     * in its test doubles; scenarios would then run against the real classes and report misleading results.
+     */
+    public static function requireRuntimeDi(string $root): void
+    {
+        if (file_exists($root . '/generated/metadata/global.php')) {
+            fwrite(STDERR, "Compiled DI detected ($root/generated/metadata). The scenario harnesses need runtime DI to\n"
+                . "inject their test doubles. In developer mode run `bin/magento setup:upgrade` (or remove\n"
+                . "generated/metadata), run the scenarios, then `bin/magento setup:di:compile` again if you need it.\n");
+            exit(2);
+        }
+    }
+
+    /** Read a (possibly inherited, private) property of an object. */
+    public static function property(object $object, string $name): mixed
+    {
+        for ($class = new \ReflectionClass($object); $class; $class = $class->getParentClass()) {
+            if ($class->hasProperty($name)) {
+                return $class->getProperty($name)->getValue($object);
+            }
+        }
+        throw new \RuntimeException(get_class($object) . " has no property $name");
     }
 
     /** Route the module and core classes to the harness test doubles (before they are first instantiated). */
@@ -44,6 +72,39 @@ class Harness
             \Company\SupplierSync\Observer\PrePaymentFence::class => SkippablePrePaymentFence::class,
             \Company\SupplierSync\Model\Config::class => AdjustableConfig::class,
         ]]);
+        $this->assertDoublesActive();
+    }
+
+    /** Verify the doubles reached the objects the scenarios depend on, not just fresh instances. */
+    private function assertDoublesActive(): void
+    {
+        $om = $this->om;
+        $relations = self::property(
+            self::property($om->get(\Magento\Sales\Model\ResourceModel\Order::class), 'entityRelationComposite'),
+            'relationProcessors'
+        );
+        $checks = [
+            'snapshot applier config' => self::property(
+                $om->get(\Company\SupplierSync\Model\Update\SnapshotApplier::class),
+                'config'
+            ) instanceof AdjustableConfig,
+            'order service repository' => self::property(
+                $om->get(\Magento\Sales\Api\OrderManagementInterface::class),
+                'orderRepository'
+            ) instanceof ThrowAfterCommitOrderRepository,
+            'order relation processor' => (bool)array_filter(
+                $relations,
+                fn ($r) => $r instanceof FailingOrderRelation
+            ),
+            'payment method factory' => $om->get(\Magento\Payment\Model\Method\Factory::class)
+                ->create(\Magento\OfflinePayments\Model\Checkmo::class) instanceof CaptureThenFailPayment,
+            'pre-payment fence observer' => $om->get(\Company\SupplierSync\Observer\PrePaymentFence::class)
+                instanceof SkippablePrePaymentFence,
+        ];
+        $missing = array_keys(array_filter($checks, fn ($ok) => !$ok));
+        if ($missing) {
+            throw new \RuntimeException('Test doubles are not active for: ' . implode(', ', $missing));
+        }
     }
 
     /** Rebuild the indexes a new product needs before it can be added to a cart. */
@@ -318,36 +379,56 @@ class Harness
         return $results;
     }
 
-    /** Delete every module row that belongs to the harness supplier. */
+    /** Create (or reuse) a second supplier, enabled on base, for reassignment scenarios. Returns its code. */
+    public function alternateSupplier(): string
+    {
+        $code = $this->supplierCode . '-alt';
+        $repo = $this->om->get(\Company\SupplierSync\Api\SupplierRepositoryInterface::class);
+        try {
+            $repo->getByCode($code);
+        } catch (\Magento\Framework\Exception\NoSuchEntityException) {
+            $repo->save($this->om->create(\Company\SupplierSync\Api\Data\SupplierInterface::class)
+                ->setCode($code)->setName('Scenario fixture (alternate)')->setIsActive(true));
+        }
+        $this->om->get(\Company\SupplierSync\Api\SupplierWebsiteManagementInterface::class)->setActive($code, 'base', true);
+        return $code;
+    }
+
+    /**
+     * Delete every module row created by this harness: ledger, updates, assignments, placement attempts (including
+     * synthetic quote ids >= 900000 used by direct PlacementService calls) and the fixture suppliers themselves.
+     * Orders and quotes stay, like any test order.
+     */
     public function cleanup(): void
     {
-        $this->supplierId = $this->supplierId
-            ?: (int)$this->db->fetchOne('SELECT supplier_id FROM company_supplier WHERE code = ?', [$this->supplierCode]);
-        if (!$this->supplierId) {
-            return;
-        }
         $db = $this->db;
-        $inv = $db->fetchCol('SELECT inventory_id FROM company_supplier_inventory WHERE supplier_id = ?', [$this->supplierId]);
-        if ($inv) {
-            $attempts = $db->fetchCol('SELECT DISTINCT attempt_id FROM company_supplier_reservation WHERE inventory_id IN (?)', [$inv]);
-            $db->delete('company_supplier_reservation_event', ['inventory_id IN (?)' => $inv]);
-            $db->delete('company_supplier_reservation', ['inventory_id IN (?)' => $inv]);
-            if ($attempts) {
-                $db->delete('company_supplier_placement_attempt', ['attempt_id IN (?)' => $attempts]);
+        $supplierIds = array_map('intval', $db->fetchCol(
+            'SELECT supplier_id FROM company_supplier WHERE code IN (?)',
+            [[$this->supplierCode, $this->supplierCode . '-alt']]
+        ));
+        if ($supplierIds) {
+            $inv = $db->fetchCol('SELECT inventory_id FROM company_supplier_inventory WHERE supplier_id IN (?)', [$supplierIds]);
+            if ($inv) {
+                $attempts = $db->fetchCol('SELECT DISTINCT attempt_id FROM company_supplier_reservation WHERE inventory_id IN (?)', [$inv]);
+                $db->delete('company_supplier_reservation_event', ['inventory_id IN (?)' => $inv]);
+                $db->delete('company_supplier_reservation', ['inventory_id IN (?)' => $inv]);
+                if ($attempts) {
+                    $db->delete('company_supplier_placement_attempt', ['attempt_id IN (?)' => $attempts]);
+                }
+                $db->delete('company_supplier_inventory', ['inventory_id IN (?)' => $inv]);
             }
-            $db->delete('company_supplier_inventory', ['inventory_id IN (?)' => $inv]);
+            $db->delete('company_supplier_update', ['supplier_id IN (?)' => $supplierIds]);
+            $db->delete('company_supplier', ['supplier_id IN (?)' => $supplierIds]); // cascades websites, assignments
         }
-        $attempts = $db->fetchCol(
-            'SELECT a.attempt_id FROM company_supplier_placement_attempt a'
+        // Attempts that never held stock: synthetic quotes and scenario quotes refused before reserving.
+        $db->query(
+            'DELETE a FROM company_supplier_placement_attempt a'
             . ' LEFT JOIN company_supplier_reservation r ON r.attempt_id = a.attempt_id'
-            . ' WHERE r.reservation_id IS NULL AND a.quote_id IN (SELECT entity_id FROM quote WHERE customer_email = ?)',
+            . ' WHERE r.reservation_id IS NULL AND (a.quote_id BETWEEN 900000 AND 999999'
+            . ' OR a.quote_id IN (SELECT entity_id FROM quote WHERE customer_email = ?))',
             ['scenario@example.com']
         );
-        if ($attempts) {
-            $db->delete('company_supplier_placement_attempt', ['attempt_id IN (?)' => $attempts]);
-        }
-        $db->delete('company_supplier_update', ['supplier_id = ?' => $this->supplierId]);
-        $db->delete('company_supplier_assignment', ['supplier_id = ?' => $this->supplierId]);
+        $this->supplierId = 0;
     }
 
     public function finish(): int

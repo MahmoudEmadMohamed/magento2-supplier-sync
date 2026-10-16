@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 [$script, $root, $startAt, $action] = array_slice($argv, 0, 4);
 $args = array_slice($argv, 4);
+require_once __DIR__ . '/Harness.php';
+\Company\SupplierSync\Test\Scenario\Harness::requireRuntimeDi($root);
 if ($action === 'rest') {
     [$mode, $method, $uri, $token, $body] = $args;
     $_SERVER['REQUEST_METHOD'] = $method;

@@ -141,7 +141,7 @@ $h->check('retried update applies', $h->update($u5)['status'] === 'applied');
 
 $h->section('Rejections after acceptance');
 $u6 = $h->accept($sku, '60');
-$h->om->get(\Company\SupplierSync\Api\AssignmentManagementInterface::class)->assign($sku, 'base', 'acme');
+$h->om->get(\Company\SupplierSync\Api\AssignmentManagementInterface::class)->assign($sku, 'base', $h->alternateSupplier());
 $consumer->process($u6);
 $row = $h->update($u6);
 $h->check('reassigned after accept: rejected assignment_mismatch', $row['status'] === 'rejected' && $row['error_code'] === 'assignment_mismatch');

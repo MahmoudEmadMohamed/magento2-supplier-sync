@@ -118,4 +118,5 @@ if (!$passed) {
     echo "Failures:\n  " . implode("\n  ", array_unique($failures)) . "\n";
 }
 $cleanup();
+$db->delete('company_supplier', ['supplier_id = ?' => $supplierId]); // cascades website and assignment rows
 exit($passed ? 0 : 1);
