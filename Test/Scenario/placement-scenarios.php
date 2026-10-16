@@ -112,6 +112,7 @@ $q = $h->quote([['sku' => $sku, 'qty' => 1]]);
 FailingOrderRelation::$fail = true;
 $error = $try(fn () => $h->placeQuote($q));
 FailingOrderRelation::$fail = false;
+$h->check('the injected order save failure was raised', str_contains((string)$error, 'Simulated order save failure'), (string)$error);
 $h->check('no order row (rolled back with the fence write)', $h->orderCountForQuote($q) === 0, (string)$error);
 $h->check('attempt failed, hold released', $h->attemptForQuote($q)['status'] === 'failed' && $counters() === '10/5/0');
 
@@ -121,6 +122,7 @@ ThrowAfterCommitOrderRepository::$fail = true;
 $error = $try(fn () => $h->placeQuote($q));
 ThrowAfterCommitOrderRepository::$fail = false;
 $attempt = $h->attemptForQuote($q);
+$h->check('the injected post-commit failure was raised', str_contains((string)$error, 'Simulated failure after the order committed'), (string)$error);
 $h->check('the order exists', $h->orderCountForQuote($q) === 1, (string)$error);
 $h->check('hold linked, not released', $attempt['status'] === 'completed' && $counters() === '10/6/0', $attempt['status'] . ' ' . $counters());
 
@@ -129,7 +131,7 @@ $q = $h->quote([['sku' => $sku, 'qty' => 1]]);
 SkippablePrePaymentFence::$skip = true;
 $error = $try(fn () => $h->placeQuote($q));
 SkippablePrePaymentFence::$skip = false;
-$h->check('pre-commit fence rejects a started attempt', $h->orderCountForQuote($q) === 0, (string)$error);
+$h->check('pre-commit fence rejects a started attempt', $h->orderCountForQuote($q) === 0 && str_contains((string)$error, 'could not be placed'), (string)$error);
 $h->check('hold released', $h->attemptForQuote($q)['status'] === 'failed' && $counters() === '10/6/0');
 
 $h->section('Placement inside an open transaction is refused before any write');
@@ -276,7 +278,28 @@ $refundItem = $om->create(\Magento\Sales\Api\Data\CreditmemoItemCreationInterfac
 $om->get(\Magento\Sales\Api\RefundOrderInterface::class)->execute($o, [$refundItem]);
 $h->check('refund after shipment releases nothing (returns come back via snapshots)', $r()['qty_released'] === '0.0000');
 
-$h->section('Snapshots and fulfilment (Examples 4 and 6)');
+$h->section('Recovery reaches every open order (rotating cursor)');
+$h->snapshot($sku, '500');
+for ($i = 0; $i < 4; $i++) {
+    $h->placeQuote($h->quote([['sku' => $sku, 'qty' => 1]])); // healthy orders that stay open
+}
+$o = $h->placeQuote($h->quote([['sku' => $sku, 'qty' => 2]]));
+// A missed lifecycle callback: the cancellation is persisted but no event reaches the module.
+$db->query('UPDATE sales_order_item SET qty_canceled = qty_ordered WHERE order_id = ?', [$o]);
+$db->query("UPDATE sales_order SET state = 'canceled', status = 'canceled' WHERE entity_id = ?", [$o]);
+$om->get(\Magento\Framework\FlagManager::class)->saveFlag(Reconciliation::CURSOR_FLAG, 0);
+$openOrders = (int)$db->fetchOne("SELECT COUNT(DISTINCT order_id) FROM company_supplier_reservation WHERE status = 'open'");
+$batch = 3;
+$recon->run($batch);
+$h->check("setup: more open orders ($openOrders) than one batch ($batch), target not in the first batch", $openOrders > $batch && $r()['status'] === 'open');
+$runs = 1;
+while ($r()['status'] !== 'closed' && $runs <= (int)ceil($openOrders / $batch) + 1) {
+    $recon->run($batch);
+    $runs++;
+}
+$h->check("the missed cancellation is settled within ceil(open / batch) + 1 runs ($runs)", $r()['status'] === 'closed' && $r()['qty_released'] === '2.0000');
+
+
 $h->snapshot($snapSku, '25');
 $open = (float)$inv($snapSku)['reserved_qty'];
 $pendingBefore = (float)$inv($snapSku)['fulfilled_pending_qty'];
@@ -314,7 +337,7 @@ $h->section('Supplier reassignment and disabled suppliers');
 $h->snapshot($sku, '500');
 $q = $h->quote([['sku' => $sku, 'qty' => 2]]);
 $o = $h->placeQuote($q);
-$om->get(\Company\SupplierSync\Api\AssignmentManagementInterface::class)->assign($sku, 'base', 'acme');
+$om->get(\Company\SupplierSync\Api\AssignmentManagementInterface::class)->assign($sku, 'base', $h->alternateSupplier());
 $om->get(\Magento\Sales\Api\OrderManagementInterface::class)->cancel($o);
 $h->check('after reassignment, the old order releases on the original supplier', $r()['status'] === 'closed' && (int)$h->reservations(['order_id = ?' => $o])[0]['inventory_id'] === (int)$inv()['inventory_id']);
 $h->supplier($sku);

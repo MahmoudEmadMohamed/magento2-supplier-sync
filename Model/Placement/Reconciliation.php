@@ -11,25 +11,34 @@ use Company\SupplierSync\Model\Reservation\ReconcileService;
 use Company\SupplierSync\Model\Reservation\ReservationLedger;
 use Company\SupplierSync\Model\ReservationStatus;
 use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\FlagManager;
 use Psr\Log\LoggerInterface;
 
 /**
  * Safety net run by cron: links saved orders, recovers expired attempts and re-reconciles open reservations.
  *
  * Every step is idempotent, so running it often, or concurrently with live traffic, is safe.
+ *
+ * Open orders are visited in order-id batches from a cursor kept in the flag table, wrapping to the start after the
+ * last batch. Healthy open orders stay open, so a scan that always started at the beginning would revisit the same
+ * oldest batch forever; with the cursor every open order is visited within ceil(open orders / limit) runs.
  */
 class Reconciliation
 {
+    public const CURSOR_FLAG = 'supplier_sync_reconcile_cursor';
+
     /**
      * @param ResourceConnection $resource
      * @param AttemptResolver $attemptResolver
      * @param ReconcileService $reconcileService
+     * @param FlagManager $flagManager
      * @param LoggerInterface $logger
      */
     public function __construct(
         private readonly ResourceConnection $resource,
         private readonly AttemptResolver $attemptResolver,
         private readonly ReconcileService $reconcileService,
+        private readonly FlagManager $flagManager,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -109,21 +118,26 @@ class Reconciliation
     }
 
     /**
-     * Orders with open (linked, unsettled) reservations.
+     * Next batch of orders with open (linked, unsettled) reservations, continuing from the stored cursor.
      *
      * @param int $limit
      * @return int[]
      */
     private function openOrderIds(int $limit): array
     {
+        $cursor = (int)$this->flagManager->getFlagData(self::CURSOR_FLAG);
         $connection = $this->resource->getConnection();
-        return array_map('intval', $connection->fetchCol(
+        $ids = array_map('intval', $connection->fetchCol(
             $connection->select()
                 ->distinct()
                 ->from($this->resource->getTableName(ReservationLedger::TABLE), ['order_id'])
                 ->where('status = ?', ReservationStatus::OPEN)
+                ->where('order_id > ?', $cursor)
                 ->order('order_id')
                 ->limit($limit)
         ));
+        // A short batch means the end was reached: start from the beginning next time.
+        $this->flagManager->saveFlag(self::CURSOR_FLAG, count($ids) < $limit ? 0 : (int)end($ids));
+        return $ids;
     }
 }
