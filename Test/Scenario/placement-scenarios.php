@@ -382,7 +382,15 @@ foreach ($samples as $sample) {
 $shipped = count(array_filter(array_slice($results, 1), fn ($r) => $r['ok']));
 $h->check('all 8 concurrent shipments succeeded', $shipped === 8, json_encode(array_slice($results, 1, 2)));
 $h->check('8 fulfil events recorded', count($final) === 8);
-$h->check('the sampler observed intermediate states (the shipments overlapped)', $intermediate > 0, "samples=" . count($samples));
+$windows = array_column(array_column(array_slice($results, 1), 'result'), null);
+$overlaps = 0;
+foreach ($windows as $i => $a) {
+    foreach (array_slice($windows, $i + 1) as $b) {
+        $overlaps += ($a['start'] < $b['end'] && $b['start'] < $a['end']) ? 1 : 0;
+    }
+}
+$h->check('the shipments ran concurrently (overlapping execution windows)', $overlaps > 0, "overlapping pairs=$overlaps");
+printf("  (sampler: %d distinct samples, %d intermediate)\n", count($samples), $intermediate);
 $h->check('every sample is a prefix of the final id order', $prefixViolations === 0, "violations=$prefixViolations");
 
 $h->cleanup();

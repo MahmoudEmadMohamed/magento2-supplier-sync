@@ -88,7 +88,11 @@ try {
         })(),
         'reconcile' => $service->reconcileOrder((int)$args[0]),
         'submit-quote' => $harness->submitQuote((int)$args[0]),
-        'ship' => $service->execute((int)$args[0]),
+        'ship' => (function () use ($service, $args) {
+            $start = microtime(true);
+            $service->execute((int)$args[0]);
+            return ['start' => $start, 'end' => microtime(true)];
+        })(),
         'sample-fulfil' => (function () use ($service, $args) {
             $connection = $service->getConnection();
             $until = microtime(true) + (float)$args[1];
