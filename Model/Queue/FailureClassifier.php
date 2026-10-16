@@ -42,9 +42,7 @@ class FailureClassifier
             ) {
                 return self::RETRYABLE;
             }
-            if ($current instanceof \PDOException
-                && in_array((int)($current->errorInfo[1] ?? 0), self::CONNECTION_LOST_CODES, true)
-            ) {
+            if ($this->isConnectionLost($current)) {
                 return self::RETRYABLE;
             }
         }
@@ -52,6 +50,18 @@ class FailureClassifier
             return self::PERMANENT;
         }
         return self::RETRYABLE;
+    }
+
+    /**
+     * Whether this is a PDO error meaning the connection was lost.
+     *
+     * @param \Throwable $e
+     * @return bool
+     */
+    private function isConnectionLost(\Throwable $e): bool
+    {
+        return $e instanceof \PDOException
+            && in_array((int)($e->errorInfo[1] ?? 0), self::CONNECTION_LOST_CODES, true);
     }
 
     /**
@@ -65,7 +75,8 @@ class FailureClassifier
         return match (true) {
             $e instanceof DeadlockException => 'db_deadlock',
             $e instanceof LockWaitException => 'db_lock_wait_timeout',
-            $e instanceof ConnectionException, $e instanceof \PDOException => 'db_connection',
+            $e instanceof ConnectionException, $this->isConnectionLost($e) => 'db_connection',
+            $e instanceof \PDOException => 'db_error',
             $this->classify($e) === self::PERMANENT => 'processing_error',
             default => 'transient_error',
         };
