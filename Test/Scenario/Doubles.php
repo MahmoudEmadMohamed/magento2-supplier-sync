@@ -77,6 +77,24 @@ class SkippablePrePaymentFence extends \Company\SupplierSync\Observer\PrePayment
     }
 }
 
+/** Message publisher that simulates a broker outage when armed; otherwise publishes to the real broker. */
+class FlakyPublisher implements \Magento\Framework\MessageQueue\PublisherInterface
+{
+    public static bool $fail = false;
+
+    public function __construct(private readonly \Magento\Framework\MessageQueue\PublisherPool $pool)
+    {
+    }
+
+    public function publish($topicName, $data)
+    {
+        if (self::$fail) {
+            throw new \RuntimeException('Simulated broker outage.');
+        }
+        return $this->pool->publish($topicName, $data);
+    }
+}
+
 /** Integration tokens accepted as bearer tokens without changing the store's configuration. */
 class BearerEnabledAuthorizationConfig extends \Magento\Integration\Model\Config\AuthorizationConfig
 {

@@ -18,6 +18,7 @@ use Company\SupplierSync\Test\Scenario\Harness;
 
 require __DIR__ . '/Harness.php';
 $h = new Harness(realpath($argv[1] ?? __DIR__ . '/../../../../../..'), 'scenario-queue');
+$h->useDoubles();
 $db = $h->db;
 $consumer = $h->om->get(UpdateConsumer::class);
 $sweeper = $h->om->get(UpdateSweeper::class);
@@ -179,6 +180,31 @@ $h->check('abandoned dispatcher claim is reclaimed and published', $h->outbox($u
 $consumer->process($u8);
 $sweeper->sweep();
 $h->check('terminal update is never rearmed', $h->update($u8)['status'] === 'applied' && $h->outbox($u8)['published_at'] !== null);
+
+$h->section('Broker outage at intake, then outbox recovery through the real broker');
+\Company\SupplierSync\Test\Scenario\FlakyPublisher::$fail = true;
+$receipt = $h->om->get(\Company\SupplierSync\Api\StockUpdateManagementInterface::class)
+    ->submit('scenario-queue', 'outage-' . uniqid(), $sku, '95', '2.00', 'USD', 'base');
+$outageId = $receipt->getUpdateId();
+$h->check('intake still answers 200 queued (publish failure is swallowed)', $outageId > 0 && $receipt->getStatus() === 'queued' && !$receipt->getReplayed());
+$h->check('the outbox row stays unpublished', $h->outbox($outageId)['published_at'] === null);
+$dispatcher->dispatch();
+$h->check('intake\'s failed claim holds the row for its 60 s window (a short backoff)', $h->outbox($outageId)['published_at'] === null && $h->outbox($outageId)['claim_token'] !== null);
+$expireClaim = fn () => $db->query('UPDATE company_supplier_outbox SET claimed_until = NOW() - INTERVAL 1 SECOND WHERE update_id = ?', [$outageId]);
+$expireClaim();
+[$published, $failedPublishes] = $dispatcher->dispatch();
+$h->check('dispatcher during the outage: publish fails, row stays unpublished', $failedPublishes >= 1 && $h->outbox($outageId)['published_at'] === null);
+\Company\SupplierSync\Test\Scenario\FlakyPublisher::$fail = false;
+$dispatcher->dispatch();
+$h->check('broker back: the failed claim is not re-sent before it expires (no double publish)', $h->outbox($outageId)['published_at'] === null);
+$expireClaim();
+$dispatcher->dispatch();
+$h->check('after the claim expires the dispatcher publishes it', $h->outbox($outageId)['published_at'] !== null && (int)$h->outbox($outageId)['attempts'] === 1);
+// The real consumer process drains the real queue (stale messages from other runs are acknowledged as no-ops).
+exec(sprintf('timeout 25 %s %s/bin/magento queue:consumers:start supplierSyncUpdateApply --max-messages=1000 > /dev/null 2>&1', PHP_BINARY, escapeshellarg($h->root)));
+$h->check('the real consumer applied it from RabbitMQ', $h->update($outageId)['status'] === 'applied' && $h->inventory($sku)['quantity'] === '95.0000', $h->update($outageId)['status']);
+$warned = str_contains((string)file_get_contents($h->root . '/var/log/supplier_sync.log'), '"update_id":' . $outageId . ',"exception":"RuntimeException"');
+$h->check('the failed publish was logged with the update id only', $warned);
 
 $h->section('Concurrency');
 $newSku = 'SUPPLIER-SYNC-Q-NEW';

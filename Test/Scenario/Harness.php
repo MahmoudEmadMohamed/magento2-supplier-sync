@@ -71,6 +71,7 @@ class Harness
             \Magento\Sales\Api\OrderRepositoryInterface::class => ThrowAfterCommitOrderRepository::class,
             \Company\SupplierSync\Observer\PrePaymentFence::class => SkippablePrePaymentFence::class,
             \Company\SupplierSync\Model\Config::class => AdjustableConfig::class,
+            \Magento\Framework\MessageQueue\PublisherInterface::class => FlakyPublisher::class,
         ]]);
         $this->assertDoublesActive();
     }
@@ -100,6 +101,10 @@ class Harness
                 ->create(\Magento\OfflinePayments\Model\Checkmo::class) instanceof CaptureThenFailPayment,
             'pre-payment fence observer' => $om->get(\Company\SupplierSync\Observer\PrePaymentFence::class)
                 instanceof SkippablePrePaymentFence,
+            'update publisher' => self::property(
+                $om->get(\Company\SupplierSync\Model\Queue\UpdatePublisher::class),
+                'publisher'
+            ) instanceof FlakyPublisher,
         ];
         $missing = array_keys(array_filter($checks, fn ($ok) => !$ok));
         if ($missing) {
@@ -219,15 +224,19 @@ class Harness
      * Build and save a guest quote. Lines: ['sku' => .., 'qty' => ..] or ['sku' => configurable, 'qty' => ..,
      * 'super' => [attribute_id => option_id]]. Returns the quote id.
      */
-    public function quote(array $lines): int
+    public function quote(array $lines, ?\Magento\Customer\Api\Data\CustomerInterface $customer = null): int
     {
         $store = $this->om->get(\Magento\Store\Model\StoreManagerInterface::class);
         $store->setCurrentStore(1);
         $repo = $this->om->get(\Magento\Catalog\Api\ProductRepositoryInterface::class);
         $quotes = $this->om->get(\Magento\Quote\Api\CartRepositoryInterface::class);
         $quote = $this->om->create(\Magento\Quote\Model\Quote::class);
-        $quote->setStore($store->getStore(1))->setCurrency()->setCustomerIsGuest(true)
-            ->setCustomerEmail('scenario@example.com')->setCheckoutMethod('guest');
+        $quote->setStore($store->getStore(1))->setCurrency();
+        if ($customer) {
+            $quote->assignCustomer($customer)->setCustomerIsGuest(false)->setCheckoutMethod('customer');
+        } else {
+            $quote->setCustomerIsGuest(true)->setCustomerEmail('scenario@example.com')->setCheckoutMethod('guest');
+        }
         foreach ($lines as $line) {
             $request = ['qty' => $line['qty']] + (isset($line['super']) ? ['super_attribute' => $line['super']] : []);
             $result = $quote->addProduct($repo->get($line['sku'], false, 1, true), new \Magento\Framework\DataObject($request));
@@ -246,6 +255,30 @@ class Harness
         $quote->getPayment()->setQuote($quote)->importData(['method' => 'checkmo']);
         $quotes->save($quote);
         return (int)$quote->getId();
+    }
+
+    /** Masked id of a quote (what guest REST and GraphQL clients use), created on first use. */
+    public function maskQuote(int $quoteId): string
+    {
+        $mask = $this->om->create(\Magento\Quote\Model\QuoteIdMask::class)->load($quoteId, 'quote_id');
+        if (!$mask->getId()) {
+            $mask->setQuoteId($quoteId)->save();
+        }
+        return (string)$mask->getMaskedId();
+    }
+
+    /** A registered customer for logged-in checkout scenarios (created once, kept like test orders). */
+    public function customer(): \Magento\Customer\Api\Data\CustomerInterface
+    {
+        $repo = $this->om->get(\Magento\Customer\Api\CustomerRepositoryInterface::class);
+        try {
+            return $repo->get('scenario-customer@example.com', 1);
+        } catch (\Magento\Framework\Exception\NoSuchEntityException) {
+            $customer = $this->om->create(\Magento\Customer\Api\Data\CustomerInterfaceFactory::class)->create()
+                ->setEmail('scenario-customer@example.com')->setFirstname('Sam')->setLastname('Scenario')
+                ->setWebsiteId(1)->setStoreId(1)->setGroupId(1);
+            return $repo->save($customer);
+        }
     }
 
     /** Place a saved quote the way admin order create does (QuoteManagement::submit). Returns the order id. */
