@@ -70,6 +70,8 @@ bin/magento supplier-sync:assignment:list
 
 A SKU is supplier-backed on a website only when it has an assignment there. Unassigned SKUs keep normal Magento behaviour. Only simple products (including configurable children) can be assigned.
 
+Supplier codes may contain letters, digits, `_` and `-` (for example `SUPPLIER_001`). They are unique ignoring case: `ACME` and `acme` are the same supplier, in the CLI, in lookups and in the idempotency hash.
+
 ### 2. MSI must still allow the sale
 
 The supplier ledger is an extra restriction on top of MSI and never raises salable quantity. For supplier-backed SKUs, give MSI enough stock to sell: a dedicated drop-ship source with a high quantity, or "Manage Stock = No". If MSI says 0, MSI blocks first and the supplier ledger is never consulted.
@@ -98,7 +100,7 @@ Magento cron must run (`bin/magento cron:run` every minute). The module adds two
 | Job | Schedule | Purpose |
 | --- | --- | --- |
 | `supplier_sync_outbox_dispatch` | every minute | Recover expired claims and lost messages, publish due outbox rows |
-| `supplier_sync_reconcile` | every 5 minutes | Link saved orders, recover expired placement attempts, re-reconcile open reservations |
+| `supplier_sync_reconcile` | every 5 minutes | Link saved orders, recover expired placement attempts, re-reconcile open reservations (200 orders per run, continuing from a cursor so every open order is revisited) |
 
 The queue uses Magento's default connection: AMQP when configured, otherwise the database queue. Only RabbitMQ was tested.
 
@@ -168,20 +170,23 @@ All module logging goes to `var/log/supplier_sync.log`, with ids, codes and stat
 | `inventory:show` reports a shortage | A snapshot came in below open commitments | New holds are blocked until the next snapshot; existing ones are kept |
 | `attempt:list --detached` is not empty | A worker died while payment may have been in flight; the hold is kept | Check the payment in the gateway, then `attempt:resolve <id> --release` if no order exists |
 | Supplier holds never taken at checkout | The plugin is missing from the generated interceptor | Run `setup:upgrade` without `--keep-generated` (or `setup:di:compile`) |
+| Scenario harness exits with "Compiled DI detected" | `setup:di:compile` was run; the harnesses need runtime DI to inject their test doubles | See [Tests](#tests) |
 
 ## Tests
 
 | Suite | What it proves | Run |
 | --- | --- | --- |
-| Unit (111 tests) | Decimal normalization and math, the full state-transition matrices, reservation status derivation | `make unit` |
+| Unit (155 tests) | Decimal normalization and math, payload normalization and hashing, failure classification, the full state-transition matrices, reservation status derivation, that `AttemptResolver` locks the attempt before any change, the uninstaller | `make unit` |
 | Queue scenarios (45 checks) | Ordering, duplicate and early deliveries, crash after claim, takeover, retry eligibility, lock ownership, poison messages, CLI retry, rejections after acceptance, lost messages; real-process concurrency for first applies, deliveries and identical submissions | `php Test/Scenario/queue-scenarios.php <magento_root>` |
-| Placement scenarios (63 checks) | Real orders through Magento checkout services: success, insufficient stock, configurables, declined payment and retry, failures before and after commit, skipped fence, nested transactions, double submit, recovery by attempt state (with a slow payment in a separate process), shipments, cancellations, refunds, snapshot examples, lag window, shortage, reassignment, disabled suppliers | `php Test/Scenario/placement-scenarios.php <magento_root>` |
-| REST scenarios (21 checks) | The real REST controller: token auth, ACL, receipts, replay, conflict, error shapes in production and developer mode, status and inventory reads, decimal quantities, and a safe-logging check | `php Test/Scenario/rest-scenarios.php <magento_root>` |
+| Placement scenarios (70 checks) | Real orders through Magento checkout services: success, insufficient stock, configurables, declined payment and retry, failures before and after commit, skipped fence, nested transactions, double submit, recovery by attempt state (with a slow payment in a separate process), the reconciliation cursor reaching an order behind a full batch, shipments, cancellations, refunds, snapshot examples, lag window, shortage, reassignment, disabled suppliers, and fulfil events racing in eight processes while a ninth checks they become visible in id order | `php Test/Scenario/placement-scenarios.php <magento_root>` |
+| REST scenarios (45 checks) | The real REST controller: token auth, ACL, receipts, replay (including upper-case supplier codes), conflict, every intake error code, disabled supplier, per-website ledgers on a second website, supplier code rules, error shapes in production and developer mode, status and inventory reads, decimal quantities, safe logging | `php Test/Scenario/rest-scenarios.php <magento_root>` |
 | Concurrency proof | 20 processes reserve 1 unit each against 10 units: exactly 10 succeed | `make burst` |
 
-`make scenarios` runs all four (about one minute). `make test` runs phpcs (Magento2 standard), phpstan (level 6) and the unit tests; CI runs the same on every push.
+`make scenarios` runs all of them and reports every failing suite (about two minutes). `make test` runs phpcs (Magento2 standard), phpstan (level 6) and the unit tests; CI runs the same on every push.
 
-The scenario harnesses need a Magento install in developer mode with this module enabled. They run against its configured database because separate processes must see committed data: Magento's integration-test framework wraps each test in a transaction, which the concurrency proofs cannot use. Fixtures use dedicated SKUs and supplier codes and are deleted afterwards; orders and quotes they create stay, like any test order. Test doubles (a failing payment method, a failing order save) are activated only inside harness processes through ObjectManager preferences, never through the module's DI configuration.
+The scenario harnesses need a Magento install in **developer mode with runtime DI**. They swap in test doubles (a failing payment method, a failing order save, an adjustable lag window) through ObjectManager preferences inside their own processes, never through the module's DI configuration. After `setup:di:compile`, constructor arguments come from `generated/metadata` and those preferences no longer take effect, so the harnesses refuse to run and say so. Remove `generated/metadata` (or run `bin/magento setup:upgrade`, which clears generated code), run the scenarios, then compile again if you need to. Each harness also checks that its doubles reached the objects that use them before running any scenario.
+
+They run against the configured database because separate processes must see committed data: Magento's integration-test framework wraps each test in a transaction, and the concurrency proofs need several processes. Fixtures use dedicated SKUs, suppliers (`scenario-*`) and a temporary second website (`ss_second`), and are deleted afterwards. Orders and quotes they create stay, like any test order.
 
 ## Removal
 
@@ -192,7 +197,7 @@ The scenario harnesses need a Magento install in developer mode with this module
    - `app/code` installs: `bin/magento module:disable Company_SupplierSync && bin/magento setup:upgrade`, then delete the directory.
 
    **Disabling the module and running `setup:upgrade` drops all ten module tables** (declarative schema, verified). Do not disable it temporarily on a live store.
-4. Delete the integration, the module's `core_config_data` rows (`supplier_sync/*`), and the `supplier_sync.update.apply` queue and binding in RabbitMQ.
+4. Delete the integration and the `supplier_sync.update.apply` queue and binding in RabbitMQ. With `module:uninstall --remove-data`, the module's `Uninstall` class removes its `core_config_data` rows (`supplier_sync/*`) and its reconciliation cursor; after a plain disable, delete those rows yourself.
 5. `bin/magento setup:di:compile` (production mode) and `bin/magento cache:flush`.
 
 ## Limitations

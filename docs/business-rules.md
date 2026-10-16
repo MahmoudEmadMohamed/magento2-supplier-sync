@@ -79,6 +79,7 @@ fulfilled_pending_qty = sum of fulfil events for this row where
 
 ## 5. Suppliers, websites and assignments
 
+- Supplier codes are 1-64 letters, digits, `_` or `-` (for example `SUPPLIER_001`) and are unique ignoring case: `ACME` and `acme` are the same supplier, including for idempotency.
 - One supplier per SKU and website, through an explicit assignment managed with the CLI. There is no auto-assignment.
 - An existing SKU with no assignment for the website: `400 unassigned_sku`.
 - An update from a supplier that is not the assigned one: `409 assignment_mismatch`.

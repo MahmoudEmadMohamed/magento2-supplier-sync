@@ -4,7 +4,7 @@ PHP ?= php
 MAGENTO = $(PHP) $(MAGENTO_ROOT)/bin/magento
 BIN = $(MAGENTO_ROOT)/vendor/bin
 
-.PHONY: install phpcs phpstan unit integration test consumer dispatch burst scenarios
+.PHONY: install phpcs phpstan unit test consumer dispatch burst scenarios
 
 install: ## Enable the module, apply the schema, regenerate interceptors (do not use --keep-generated)
 	$(MAGENTO) module:enable Company_SupplierSync
@@ -20,9 +20,6 @@ phpstan:
 unit: ## Run from dev/tests/unit so core's Allure extension finds its config
 	cd $(MAGENTO_ROOT)/dev/tests/unit && $(abspath $(BIN))/phpunit -c phpunit.xml.dist $(CURDIR)/Test/Unit
 
-integration: ## Needs dev/tests/integration/etc/install-config-mysql.php pointing at a dedicated test database
-	cd $(MAGENTO_ROOT)/dev/tests/integration && $(abspath $(BIN))/phpunit -c phpunit.xml.dist $(CURDIR)/Test/Integration
-
 test: phpcs phpstan unit
 
 consumer: ## Start the stock update consumer
@@ -31,11 +28,8 @@ consumer: ## Start the stock update consumer
 dispatch: ## Publish due outbox rows and run the sweep once
 	$(MAGENTO) supplier-sync:outbox:dispatch
 
-scenarios: ## All scenario harnesses against the configured database (developer mode; uses fixture data)
-	$(PHP) Test/Scenario/queue-scenarios.php $(MAGENTO_ROOT)
-	$(PHP) Test/Scenario/placement-scenarios.php $(MAGENTO_ROOT)
-	$(PHP) Test/Scenario/rest-scenarios.php $(MAGENTO_ROOT)
-	./scripts/reserve-burst.sh $(MAGENTO_ROOT)
+scenarios: ## All scenario harnesses + burst; needs developer mode with runtime DI (no generated/metadata)
+	./scripts/run-scenarios.sh $(MAGENTO_ROOT)
 
 burst: ## 20 concurrent one-unit reservations (developer mode only)
 	./scripts/reserve-burst.sh $(MAGENTO_ROOT)

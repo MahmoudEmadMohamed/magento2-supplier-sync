@@ -132,7 +132,7 @@ The concurrent-first-apply scenario caught this. Two consumers applied the first
 | Observer `sales_order_save_after` (pre-commit fence) | Fires inside the order save transaction; rejecting there rolls the order back (I5) |
 | Observer `sales_order_item_save_commit_after` (reconcile) | The only event that fires, with persisted quantities, for every shipment, cancellation, invoice and credit memo (see spike findings) |
 | Cron `supplier_sync_outbox_dispatch` (every minute) | Publication retries and crash recovery for the queue |
-| Cron `supplier_sync_reconcile` (every 5 minutes) | Links saved orders, recovers expired attempts, re-runs reconcile in case a commit callback failed (core swallows those exceptions) |
+| Cron `supplier_sync_reconcile` (every 5 minutes) | Links saved orders, recovers expired attempts, re-runs reconcile in case a commit callback failed (core swallows those exceptions). Open orders are walked in id batches from a cursor in the flag table, wrapping after the last batch: healthy orders stay open, so restarting from the lowest id every run would never reach later ones |
 
 No core files are changed, and no preferences replace core classes.
 
@@ -200,8 +200,10 @@ The counters `qty_reserved`, `qty_fulfilled` and `qty_released` are authoritativ
 
 | Plan area | Where |
 | --- | --- |
-| Supplier uniqueness, disabled suppliers and websites, website isolation | CLI smoke test (P3); `rest-scenarios.php`; `placement-scenarios.php` "disabled suppliers" |
-| Invalid qty, price, scale, key, currency, SKU, type, website, assignment | `rest-scenarios.php`; intake checks recorded in P5 |
+| Supplier uniqueness (including case variants), code rules | `rest-scenarios.php` "Supplier codes" |
+| Disabled suppliers and supplier websites | `rest-scenarios.php` "Disabled supplier", "Validation matrix"; `placement-scenarios.php` "disabled suppliers" |
+| Website isolation | `rest-scenarios.php` "Website isolation" (one SKU, two websites, two suppliers) |
+| Invalid key, qty, price, scale, currency, supplier, website, SKU, type, website membership, assignment | `rest-scenarios.php` "Validation matrix"; `Test/Unit/Model/Update/PayloadNormalizerTest` |
 | Unauthorized requests and ACL | `rest-scenarios.php` "Authentication and ACL" |
 | Identical retries, conflicting keys, concurrent identical submissions | `rest-scenarios.php`; `queue-scenarios.php` "Concurrency" |
 | Duplicate and out-of-order messages | `queue-scenarios.php` "Apply and ordering", "Duplicate deliveries" |
@@ -211,13 +213,17 @@ The counters `qty_reserved`, `qty_fulfilled` and `qty_released` are authoritativ
 | Duplicate reservations, multi-line aggregation, configurables | `placement-scenarios.php` |
 | Payment failure, order save failure, exception after commit | `placement-scenarios.php` |
 | Crash recovery for each attempt state | `placement-scenarios.php` "Recovery by attempt state", "Slow payment" |
+| Recovery reaches every open order | `placement-scenarios.php` "Recovery reaches every open order" |
 | Full, partial, repeated and concurrent cancellations; refunds; shipments | `placement-scenarios.php` "Order lifecycle" |
 | Snapshot examples 4 and 6, lag window, shortage, reassignment | `placement-scenarios.php` |
 | Concurrency proof (20 against 10) | `Test/Concurrency/reserve-burst.php` |
 | Safe logging | `rest-scenarios.php` "Safe logging" |
-| Transition matrices, decimal math, status derivation | `Test/Unit` |
+| Fulfil event ids follow commit order (watermark safety) | `placement-scenarios.php` "Fulfil events become visible in id order": eight concurrent shipments, one sampler |
+| Transition matrices, decimal math, normalization and hashing, failure classification, resolver lock order (I3), uninstall | `Test/Unit` |
 
 The scenario harnesses replace Magento's integration-test framework for everything that needs real concurrency: that framework wraps tests in a transaction that other processes cannot see. They run against a real install and assert on persisted rows.
+
+They need runtime DI. Their test doubles are ObjectManager preferences set inside the harness process; after `setup:di:compile`, constructor arguments come from `generated/metadata` and the preferences no longer reach them. The harnesses therefore refuse to run when compiled metadata exists, and verify that every double reached the object that uses it before any scenario runs.
 
 ## Deviations from the plan
 
@@ -228,6 +234,7 @@ The scenario harnesses replace Magento's integration-test framework for everythi
 | Reservation table as planned | Adds `qty_source_item_id` | Configurable children carry no shipped or cancelled quantities; the parent item does |
 | Primary concurrency harness as a PHPUnit integration test | Standalone harness scripts | The integration framework's transaction wrapping hides fixtures from child processes; the target environment also had no separate test database |
 | Logger as a virtual type of Magento's logger | A dedicated logger class | A virtual type inherits core handlers, duplicating module logs into `system.log` and `exception.log` |
+| Lower-case supplier codes | Letters of either case, unique ignoring case | The assignment's example code is `SUPPLIER_001`; the hash lower-cases the supplier code so case variants replay the same key |
 
 ## Extensions
 
